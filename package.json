@@ -1,0 +1,17 @@
+{
+  "name": "frameforge",
+  "version": "1.0.0",
+  "description": "HTML animation to video exporter",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "electron": "^33.0.0",
+    "puppeteer": "^24.15.0",
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.3"
+  }
+}

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FrameForge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── Title bar ─────────────────────────────────────────── -->
+  <header class="titlebar">
+    <div class="titlebar-brand">
+      <span class="titlebar-icon">▶</span>
+      <span class="titlebar-name">FrameForge</span>
+      <span class="titlebar-version">v1.0.0</span>
+    </div>
+    <div class="titlebar-status" id="global-status">Idle</div>
+  </header>
+
+  <!-- ── Two-column layout ─────────────────────────────────── -->
+  <div class="layout">
+
+    <!-- ── LEFT SIDEBAR ─────────────────────────────────────── -->
+    <aside class="sidebar">
+
+      <!-- Output Settings -->
+      <section class="panel" id="panel-output">
+        <h2 class="panel-title">Output Settings</h2>
+
+        <div class="field">
+          <label class="field-label">Output Folder</label>
+          <div class="folder-row">
+            <span class="folder-path mono" id="output-folder-display">—</span>
+            <button class="btn btn-secondary btn-sm" id="btn-change-folder">Change</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="output-format">Output Format</label>
+          <select class="input" id="output-format">
+            <option value="mp4">MP4 (H.264)</option>
+            <option value="webm">WebM (VP9)</option>
+            <option value="prores">ProRes 4444</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="filename-prefix">Filename Prefix</label>
+          <input class="input mono" id="filename-prefix" type="text" placeholder="e.g. YT_2024_" spellcheck="false">
+        </div>
+
+        <div class="format-note" id="format-note" hidden>
+          ⚠ Transparent background requires ProRes 4444 or WebM.
+        </div>
+      </section>
+
+      <!-- Add Job -->
+      <section class="panel" id="panel-add-job">
+        <h2 class="panel-title">Add Job</h2>
+
+        <!-- Drop zone -->
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-zone-grid"></div>
+          <div class="drop-zone-content">
+            <div class="drop-icon">⬇</div>
+            <div class="drop-label">Drop HTML file here</div>
+            <div class="drop-sublabel">or</div>
+            <button class="btn btn-secondary btn-sm" id="btn-browse">Browse File</button>
+          </div>
+        </div>
+
+        <!-- Selected file info -->
+        <div class="selected-file" id="selected-file" hidden>
+          <div class="selected-file-header">
+            <span class="selected-filename mono" id="selected-filename"></span>
+            <button class="btn-icon" id="btn-clear-file" title="Clear">✕</button>
+          </div>
+          <!-- Single file: iframe preview -->
+          <div class="preview-container" id="single-preview">
+            <iframe class="preview-frame" id="preview-frame" sandbox="allow-scripts allow-same-origin" src="about:blank"></iframe>
+          </div>
+          <!-- Multi file: name list -->
+          <div class="file-list" id="multi-file-list" hidden></div>
+        </div>
+
+        <!-- Job settings -->
+        <div class="job-settings" id="job-settings">
+          <div class="settings-grid">
+            <div class="field">
+              <label class="field-label" for="job-duration">Duration (s)</label>
+              <input class="input mono" id="job-duration" type="number" value="5.0" min="0.5" max="120" step="0.5">
+            </div>
+            <div class="field">
+              <label class="field-label" for="job-delay">Start Delay (s)</label>
+              <input class="input mono" id="job-delay" type="number" value="0.2" min="0" max="5" step="0.1">
+            </div>
+          </div>
+
+          <div class="settings-grid">
+            <div class="field">
+              <label class="field-label" for="job-resolution">Resolution</label>
+              <select class="input" id="job-resolution">
+                <option value="hd">HD 1280×720</option>
+                <option value="fhd">FHD 1920×1080</option>
+                <option value="2k" selected>2K 2560×1440</option>
+                <option value="4k">4K 3840×2160</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field-label" for="job-fps">Frame Rate</label>
+              <select class="input" id="job-fps">
+                <option value="10">10 fps</option>
+                <option value="24">24 fps</option>
+                <option value="30" selected>30 fps</option>
+                <option value="60">60 fps</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-grid">
+            <div class="field">
+              <label class="field-label" for="job-zoom">Zoom (%)</label>
+              <input class="input mono" id="job-zoom" type="number" value="100" min="10" max="500" step="10">
+            </div>
+            <div class="field">
+              <label class="field-label" for="job-speed">Playback Speed</label>
+              <select class="input" id="job-speed">
+                <option value="0.25">0.25× slow-mo</option>
+                <option value="0.5">0.5× slow-mo</option>
+                <option value="0.75">0.75×</option>
+                <option value="1" selected>1× normal</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2× fast</option>
+                <option value="4">4× fast</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Background</label>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="bg" value="black" checked>
+                <span class="radio-text">Black</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="bg" value="white">
+                <span class="radio-text">White</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="bg" value="transparent">
+                <span class="radio-text">Transparent</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-full" id="btn-add-job" disabled>Add to Queue</button>
+      </section>
+
+    </aside>
+
+    <!-- ── RIGHT MAIN AREA ───────────────────────────────────── -->
+    <main class="main-area">
+
+      <!-- Queue header -->
+      <div class="queue-header">
+        <div class="queue-title-row">
+          <h2 class="queue-title">Export Queue</h2>
+          <span class="queue-count mono" id="queue-count">0 jobs</span>
+          <span class="concurrency-badge mono" id="concurrency-badge"></span>
+        </div>
+        <div class="queue-actions">
+          <button class="btn btn-secondary" id="btn-clear-all">Clear All</button>
+          <button class="btn btn-primary" id="btn-export-all" disabled>Export All</button>
+          <button class="btn btn-danger" id="btn-cancel" hidden>Cancel</button>
+        </div>
+      </div>
+
+      <!-- Job list -->
+      <div class="job-list-wrapper">
+        <div class="job-list" id="job-list">
+          <div class="empty-state" id="empty-state">
+            <div class="empty-icon">◻</div>
+            <div class="empty-label">Queue is empty</div>
+            <div class="empty-sub">Add an HTML animation file to get started</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log panel -->
+      <div class="log-panel">
+        <div class="log-header">
+          <span class="log-title mono">LOG</span>
+          <button class="btn-icon" id="btn-clear-log" title="Clear log">Clear</button>
+        </div>
+        <div class="log-body" id="log-body">
+          <div class="log-line log-line--muted">FrameForge ready.</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
