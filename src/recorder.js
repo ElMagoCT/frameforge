@@ -17,10 +17,33 @@ const cancelFlags = new Map();
 const activeTempDirs = new Set();
 
 function cancelRecording() {
-  // Mark every active job as cancelled
   for (const jobId of cancelFlags.keys()) {
     cancelFlags.set(jobId, true);
   }
+}
+
+// Advances Chrome's internal virtual clock by budgetMs milliseconds, then
+// resolves once the budget is exhausted. Both CSS animations and rAF callbacks
+// advance exactly this amount regardless of real wall-clock time, so every
+// captured frame is at a precise, deterministic point in the animation.
+function advanceVirtualTime(client, budgetMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('Virtual time advance timed out')),
+      10000
+    );
+    client.once('Emulation.virtualTimeBudgetExpired', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    client.send('Emulation.setVirtualTimePolicy', {
+      policy: 'advance',
+      budget: budgetMs,
+    }).catch((err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
 }
 
 async function recordHTML(jobConfig, sendEvent) {
@@ -103,7 +126,11 @@ async function recordHTML(jobConfig, sendEvent) {
     log(`[${jobId}] Loading: ${path.basename(filePath)}`);
 
     try {
-      await page.goto(fileUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+      // 'domcontentloaded' fires as soon as the HTML is parsed — typically
+      // well under a second for local files. 'networkidle0' would hang for
+      // 30 s whenever an external CDN (Google Fonts, etc.) keeps a persistent
+      // HTTP/2 connection alive.
+      await page.goto(fileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     } catch (e) {
       if (e.message.toLowerCase().includes('timeout')) {
         log(`[${jobId}] Page load timed out — proceeding anyway...`);
@@ -114,13 +141,20 @@ async function recordHTML(jobConfig, sendEvent) {
       }
     }
 
+    // Give async scripts and CDN resources (fonts, images) a moment to settle.
+    // 1 s is enough for fonts on a normal connection; if they don't arrive in
+    // time the page falls back to system fonts but animations still run.
+    await new Promise((r) => setTimeout(r, 1000));
+
     // Override page background via CSS (belt-and-suspenders)
     if (background !== 'transparent') {
       const color = background === 'black' ? '#000000' : '#ffffff';
       await page.evaluate((c) => {
+        const root = document.head || document.documentElement;
+        if (!root) return;
         const style = document.createElement('style');
         style.textContent = `html, body { background: ${c} !important; }`;
-        document.head.appendChild(style);
+        root.appendChild(style);
       }, color);
     }
 
@@ -128,39 +162,53 @@ async function recordHTML(jobConfig, sendEvent) {
     if (zoom !== 100) {
       const scale = zoom / 100;
       await page.evaluate((s) => {
+        const root = document.head || document.documentElement;
+        if (!root) return;
         const st = document.createElement('style');
         st.textContent = `html { zoom: ${s}; }`;
-        document.head.appendChild(st);
+        root.appendChild(st);
       }, scale);
     }
 
+    // Freeze virtual time NOW (after the page is fully loaded so the load event
+    // and external resource fetches complete normally). This pauses CSS animations,
+    // rAF loops, setTimeout/setInterval — the whole page clock — so every frame
+    // we capture is at a deterministic, precise point in the animation.
+    await client.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
+
+    // Rewind all CSS/Web animations to t=0 so we always capture from the start,
+    // regardless of how long the page took to load.
+    await page.evaluate(() => {
+      document.getAnimations().forEach((a) => { a.currentTime = 0; });
+    });
+
+    // Advance virtual time through the start delay so any deferred setup
+    // (setTimeout-driven init, delayed CSS animations) runs before frame 0.
     if (startDelay > 0) {
-      log(`[${jobId}] Waiting ${startDelay}s for animation init...`);
-      await new Promise((r) => setTimeout(r, startDelay * 1000));
+      log(`[${jobId}] Advancing ${startDelay}s virtual time for animation init...`);
+      await advanceVirtualTime(client, startDelay * 1000);
     }
 
     if (isCancelled()) throw new Error('Recording cancelled by user');
 
     log(`[${jobId}] Capturing ${totalFrames} frames at ${fps}fps...`);
-    const frameInterval = 1000 / fps;
+    const frameIntervalMs = 1000 / fps;
 
     for (let i = 0; i < totalFrames; i++) {
       if (isCancelled()) throw new Error('Recording cancelled by user');
 
-      const frameStart = Date.now();
-      const framePath = path.join(tempDir, `frame_${String(i).padStart(6, '0')}.png`);
+      // Step the animation forward by exactly one frame before screenshotting.
+      // This is independent of how long the screenshot takes, so the output
+      // always matches the preview at 1:1 speed.
+      await advanceVirtualTime(client, frameIntervalMs);
 
+      const framePath = path.join(tempDir, `frame_${String(i).padStart(6, '0')}.png`);
       const opts = { path: framePath, type: 'png' };
       if (background === 'transparent') opts.omitBackground = true;
 
       await page.screenshot(opts);
 
       progress(Math.round(((i + 1) / totalFrames) * 70), `Capturing frame ${i + 1}/${totalFrames}`);
-
-      if (i < totalFrames - 1) {
-        const wait = Math.max(0, frameInterval - (Date.now() - frameStart));
-        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      }
     }
 
     await browser.close();
