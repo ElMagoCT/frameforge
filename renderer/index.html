@@ -18,7 +18,7 @@
     <div class="titlebar-brand">
       <span class="titlebar-icon">▶</span>
       <span class="titlebar-name">FrameForge</span>
-      <span class="titlebar-version">v1.0.0</span>
+      <span class="titlebar-version">v1.0.1</span>
     </div>
     <div class="titlebar-status" id="global-status">Idle</div>
   </header>
@@ -140,6 +140,13 @@
                 <option value="4">4× fast</option>
               </select>
             </div>
+          </div>
+
+          <div class="field">
+            <label class="checkbox-label" title="Drives requestAnimationFrame, setTimeout, performance.now() and Date.now() off the capture clock so canvas and JS-driven motion renders frame-accurately. Turn off only if a page misbehaves.">
+              <input type="checkbox" id="job-deterministic-js" checked>
+              <span class="radio-text">Deterministic JS timing (canvas / rAF)</span>
+            </label>
           </div>
 
           <div class="field">

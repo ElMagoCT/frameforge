@@ -9,6 +9,7 @@ Built for motion designers, developers, and YouTube creators who build animation
 ## Features
 
 - **Drag-and-drop or batch import** — drop one file or select dozens at once; they all queue up with the same settings
+- **Renders every animation system frame-accurately** — CSS/WAAPI, SVG SMIL and animated SVG filters, canvas + `requestAnimationFrame`, and `<video>`
 - **MP4, WebM, and ProRes 4444** — standard delivery or transparent alpha channel for compositing
 - **Resolution up to 4K** — HD, 1080p, 1440p, and 4K output
 - **Zoom control** — scale content inside the frame without changing output resolution
@@ -22,6 +23,21 @@ Built for motion designers, developers, and YouTube creators who build animation
 ## How it works
 
 FrameForge uses **Puppeteer** to open your HTML file in a headless Chromium browser at the exact resolution you specify, captures frames at your chosen framerate, then pipes them through **FFmpeg** to encode the final video. Everything stays local.
+
+Capture is **deterministic**, not a real-time screen recording. Before the first frame, FrameForge pauses every clock in the page; for each frame it seeks them all to that frame's exact timestamp. A capture that takes four minutes of wall time still produces a perfectly timed five-second video.
+
+Four independent animation systems each need their own API, and all four are driven:
+
+| System | How it's controlled |
+|---|---|
+| CSS animations / transitions / WAAPI | `getAnimations()` + `currentTime` |
+| SVG SMIL — `<animate>`, `<animateTransform>`, animated filters | `svg.pauseAnimations()` + `svg.setCurrentTime()` |
+| JS timing — `requestAnimationFrame`, `setTimeout`, `setInterval`, `performance.now()`, `Date.now()` | replaced with a virtual clock stepped once per frame |
+| `<video>` | `pause()` + `currentTime` |
+
+Same-origin `<iframe>` content is seeked too.
+
+> **Note:** SMIL animations are *not* returned by `getAnimations()`. Any recorder that only drives the Web Animations API will let SVG `<animate>` run on real wall-clock time — which, during a slow capture, means it races to its end state within the first frame or two. Animated SVG filter effects (noise dissolves, turbulence wipes) are the usual casualty.
 
 ---
 
@@ -71,6 +87,7 @@ After installing, double-click `FrameForge.vbs` on your Desktop to launch the ap
 | **Zoom** | Scales the HTML content inside the viewport (10 – 500%) |
 | **Playback speed** | 0.25× slow-mo up to 4× fast — applied at encode time, no re-capture needed |
 | **Background** | Black · White · Transparent (requires ProRes or WebM) |
+| **Deterministic JS timing** | On by default. Runs `requestAnimationFrame`, `setTimeout`, `setInterval`, `performance.now()` and `Date.now()` off the capture clock so canvas and JS-driven motion is frame-accurate. Turn off only if a page misbehaves under it |
 
 ---
 
@@ -87,6 +104,12 @@ After installing, double-click `FrameForge.vbs` on your Desktop to launch the ap
 
 **Output video is black**
 Increase the Start Delay to give CSS animations time to initialize before the first frame is captured.
+
+**An SVG effect finishes instantly / never animates**
+This is what deterministic SMIL seeking fixes — make sure you're on a current build. If a specific effect still misbehaves, check that its `<animate>` sits inside an outermost `<svg>` element; nested `<svg>` tags share the outer root's timeline.
+
+**A canvas or JS animation looks wrong**
+Drive motion from the timestamp your `requestAnimationFrame` callback receives (or `performance.now()`), not from a counter you increment once per frame — a frame counter desyncs from the timeline. If a page still misbehaves, untick **Deterministic JS timing** for that job.
 
 **FFmpeg encoding error**
 Run `npm install` again to make sure `ffmpeg-static` completed its post-install step. Check that the output path contains no special characters.

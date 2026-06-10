@@ -167,6 +167,7 @@ function buildJob(filePath) {
   const zoom       = Math.max(10, Math.min(500, parseInt($('job-zoom').value, 10) || 100));
   const speed      = parseFloat($('job-speed').value) || 1;
   const background = document.querySelector('input[name="bg"]:checked')?.value || 'black';
+  const deterministicJS = $('job-deterministic-js')?.checked !== false;
   const outputFormat = elOutputFormat.value;
   const filename   = filePath.replace(/^.*[\\/]/, '');
   const base       = filename.replace(/\.html?$/i, '');
@@ -187,6 +188,7 @@ function buildJob(filePath) {
     background,
     zoom,
     speed,
+    deterministicJS,
     outputFormat,
     outputPath,
     status: 'ready',
@@ -405,6 +407,7 @@ function runJob(job) {
       background:   job.background,
       zoom:         job.zoom,
       speed:        job.speed,
+      deterministicJS: job.deterministicJS,
       outputFormat: job.outputFormat,
       outputPath:   job.outputPath,
     });

@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
+const { installTimeShim } = require('./timeshim');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -22,28 +23,28 @@ function cancelRecording() {
   }
 }
 
-// Advances Chrome's internal virtual clock by budgetMs milliseconds, then
-// resolves once the budget is exhausted. Both CSS animations and rAF callbacks
-// advance exactly this amount regardless of real wall-clock time, so every
-// captured frame is at a precise, deterministic point in the animation.
-function advanceVirtualTime(client, budgetMs) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('Virtual time advance timed out')),
-      10000
-    );
-    client.once('Emulation.virtualTimeBudgetExpired', () => {
-      clearTimeout(timer);
-      resolve();
-    });
-    client.send('Emulation.setVirtualTimePolicy', {
-      policy: 'advance',
-      budget: budgetMs,
-    }).catch((err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Poll until the page reports fonts, images and the load event are all done.
+// This replaces a blind fixed delay: a slow Google Fonts response used to mean
+// the first frames rendered in a fallback font, while a page with no external
+// resources used to waste a full second doing nothing.
+async function waitForAssets(page, log, jobId, maxMs = 8000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    let ready = false;
+    try {
+      ready = await page.evaluate(() => window.__ff && window.__ff.ready());
+    } catch (_) {
+      break; // navigation/teardown — let the capture proceed
+    }
+    if (ready) return true;
+    // Drain any init timers the page queued, without advancing the clock past 0.
+    try { await page.evaluate(() => window.__ff && window.__ff.seek(0)); } catch (_) {}
+    await wait(100);
+  }
+  log(`[${jobId}] Assets still loading after ${maxMs / 1000}s — capturing anyway.`);
+  return false;
 }
 
 async function recordHTML(jobConfig, sendEvent) {
@@ -58,6 +59,7 @@ async function recordHTML(jobConfig, sendEvent) {
     background,
     zoom = 100,
     speed = 1,
+    deterministicJS = true,
     outputFormat,
     outputPath,
   } = jobConfig;
@@ -104,10 +106,22 @@ async function recordHTML(jobConfig, sendEvent) {
     ];
     if (process.platform === 'win32') args.push('--disable-gpu');
 
-    browser = await puppeteer.launch({ headless: true, args });
+    // protocolTimeout:0 disables the per-command CDP timeout so large
+    // screenshots at 4K never get cut off mid-capture.
+    browser = await puppeteer.launch({ headless: true, protocolTimeout: 0, args });
 
     const page = await browser.newPage();
     await page.setViewport({ width, height, deviceScaleFactor: 1 });
+
+    // Install the time shim before any page script runs, so it owns rAF and the
+    // timer functions from the very first line the animation executes.
+    await page.evaluateOnNewDocument(installTimeShim, deterministicJS);
+
+    // A machine with "reduce motion" enabled would otherwise export a still
+    // frame from any page that respects the media query.
+    await page.emulateMediaFeatures([
+      { name: 'prefers-reduced-motion', value: 'no-preference' },
+    ]);
 
     // Force background via CDP before navigation
     const client = await page.createCDPSession();
@@ -141,10 +155,17 @@ async function recordHTML(jobConfig, sendEvent) {
       }
     }
 
-    // Give async scripts and CDN resources (fonts, images) a moment to settle.
-    // 1 s is enough for fonts on a normal connection; if they don't arrive in
-    // time the page falls back to system fonts but animations still run.
-    await new Promise((r) => setTimeout(r, 1000));
+    // A page that clobbers globals (or an evaluateOnNewDocument that didn't
+    // apply) would leave nothing to seek. Re-inject rather than fail the job —
+    // frame seeking still works; only the JS virtual clock is too late to help,
+    // since the page's own timers have already been handed out.
+    const shimPresent = await page.evaluate(() => typeof window.__ff === 'object' && !!window.__ff);
+    if (!shimPresent) {
+      log(`[${jobId}] Time shim missing — re-injecting (JS timing will be non-deterministic).`);
+      await page.evaluate(installTimeShim, false);
+    }
+
+    await waitForAssets(page, log, jobId);
 
     // Override page background via CSS (belt-and-suspenders)
     if (background !== 'transparent') {
@@ -170,37 +191,37 @@ async function recordHTML(jobConfig, sendEvent) {
       }, scale);
     }
 
-    // Freeze virtual time NOW (after the page is fully loaded so the load event
-    // and external resource fetches complete normally). This pauses CSS animations,
-    // rAF loops, setTimeout/setInterval — the whole page clock — so every frame
-    // we capture is at a deterministic, precise point in the animation.
-    await client.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
+    // Pause every clock in the page — CSS/WAAPI, SVG SMIL, JS timers and video
+    // — and rewind them all to t=0. We don't use CDP virtual time here: seeking
+    // via each system's own API is what actually controls compositor-thread
+    // animations, and VT pause blocks page.evaluate in some Chrome builds,
+    // causing screenshots to hang.
+    await page.evaluate(() => window.__ff.prepare());
 
-    // Rewind all CSS/Web animations to t=0 so we always capture from the start,
-    // regardless of how long the page took to load.
-    await page.evaluate(() => {
-      document.getAnimations().forEach((a) => { a.currentTime = 0; });
-    });
+    const frameIntervalMs = 1000 / fps;
 
-    // Advance virtual time through the start delay so any deferred setup
-    // (setTimeout-driven init, delayed CSS animations) runs before frame 0.
+    // Step (rather than jump) to the start delay so any timers or rAF-driven
+    // motion in that window still runs frame by frame instead of being skipped.
     if (startDelay > 0) {
-      log(`[${jobId}] Advancing ${startDelay}s virtual time for animation init...`);
-      await advanceVirtualTime(client, startDelay * 1000);
+      log(`[${jobId}] Seeking animations to ${startDelay}s start delay...`);
+      for (let t = 0; t < startDelay * 1000; t += frameIntervalMs) {
+        await page.evaluate((ms) => window.__ff.frame(ms), t);
+      }
     }
 
     if (isCancelled()) throw new Error('Recording cancelled by user');
 
     log(`[${jobId}] Capturing ${totalFrames} frames at ${fps}fps...`);
-    const frameIntervalMs = 1000 / fps;
 
     for (let i = 0; i < totalFrames; i++) {
       if (isCancelled()) throw new Error('Recording cancelled by user');
 
-      // Step the animation forward by exactly one frame before screenshotting.
-      // This is independent of how long the screenshot takes, so the output
-      // always matches the preview at 1:1 speed.
-      await advanceVirtualTime(client, frameIntervalMs);
+      const frameTimeMs = startDelay * 1000 + i * frameIntervalMs;
+
+      // Put every animation system at the exact moment this frame represents.
+      // page.screenshot() forces a full paint pipeline run before capturing, so
+      // the seek is always reflected in the output without a separate flush call.
+      await page.evaluate((t) => window.__ff.frame(t), frameTimeMs);
 
       const framePath = path.join(tempDir, `frame_${String(i).padStart(6, '0')}.png`);
       const opts = { path: framePath, type: 'png' };
