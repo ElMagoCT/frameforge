@@ -18,7 +18,7 @@
     <div class="titlebar-brand">
       <span class="titlebar-icon">▶</span>
       <span class="titlebar-name">FrameForge</span>
-      <span class="titlebar-version">v1.0.1</span>
+      <span class="titlebar-version">v1.0.2</span>
     </div>
     <div class="titlebar-status" id="global-status">Idle</div>
   </header>
@@ -140,6 +140,13 @@
                 <option value="4">4× fast</option>
               </select>
             </div>
+          </div>
+
+          <div class="field">
+            <label class="checkbox-label" title="Templates are authored at 1920×1080. Rendering at a bigger resolution without scaling leaves the content undersized in the frame; this matches the zoom to the output so it always fills it.">
+              <input type="checkbox" id="job-zoom-auto" checked>
+              <span class="radio-text">Auto-scale zoom to resolution <span class="hint-note" id="zoom-auto-note"></span></span>
+            </label>
           </div>
 
           <div class="field">

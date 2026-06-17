@@ -798,3 +798,12 @@ input[type='number'].input::-webkit-outer-spin-button {
 .log-line--success { color: var(--success); }
 .log-line--error { color: var(--error); }
 .log-line--accent { color: var(--accent); }
+
+/* ── Inline hint inside a checkbox label ─────────────────────────────────── */
+
+.hint-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}

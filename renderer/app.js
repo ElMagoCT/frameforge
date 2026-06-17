@@ -11,6 +11,12 @@ const RESOLUTIONS = {
 
 const FORMAT_EXT = { mp4: 'mp4', webm: 'webm', prores: 'mov' };
 
+// Animations are authored against a 1920×1080 stage (that's what the templates
+// use). Rendering that stage into a larger viewport leaves it undersized with
+// dead space around it, so zoom has to track the output resolution. 1080p is
+// the 100% baseline.
+const ZOOM_BASE_HEIGHT = 1080;
+
 let jobs = [];
 let isExporting = false;
 let stopRequested = false;
@@ -108,6 +114,31 @@ function refreshConcurrencyBadge() {
   }
   const n = calcAdaptiveConcurrency(ready);
   elConcurrencyBadge.textContent = `· Auto: ${n} parallel`;
+}
+
+// ── Auto-scaled zoom ──────────────────────────────────────────────────────
+
+function autoZoomFor(resKey) {
+  const res = RESOLUTIONS[resKey] || RESOLUTIONS.fhd;
+  return Math.round((res.height / ZOOM_BASE_HEIGHT) * 100);
+}
+
+// When auto is on, the zoom box mirrors the resolution and is read-only, so the
+// number being used is always visible rather than hidden behind a checkbox.
+function applyAutoZoom() {
+  const auto = $('job-zoom-auto');
+  const zoomInput = $('job-zoom');
+  if (!auto || !zoomInput) return;
+
+  zoomInput.disabled = auto.checked;
+  if (auto.checked) zoomInput.value = autoZoomFor($('job-resolution').value);
+
+  const note = $('zoom-auto-note');
+  if (note) {
+    note.textContent = auto.checked
+      ? `— 1080p = 100%, now ${zoomInput.value}%`
+      : '— off, using the value above';
+  }
 }
 
 // ── File selection ────────────────────────────────────────────────────────
@@ -497,6 +528,11 @@ function wireEvents() {
   document.querySelectorAll('input[name="bg"]').forEach((r) =>
     r.addEventListener('change', checkTransparentFormatNote)
   );
+
+  $('job-resolution').addEventListener('change', () => { applyAutoZoom(); refreshConcurrencyBadge(); });
+  $('job-zoom-auto').addEventListener('change', applyAutoZoom);
+
+  applyAutoZoom();
 }
 
 async function browseFile() {
