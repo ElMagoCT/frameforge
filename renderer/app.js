@@ -116,6 +116,80 @@ function refreshConcurrencyBadge() {
   elConcurrencyBadge.textContent = `· Auto: ${n} parallel`;
 }
 
+// ── Output filename ───────────────────────────────────────────────────────
+//
+// Default is <name>_mm-dd-yy_hh-mm. Dashes rather than slashes and colons
+// because \ / : * ? " < > | are all illegal in Windows filenames.
+
+const two = (n) => String(n).padStart(2, '0');
+
+// Order here is the order parts appear in the filename.
+const FILENAME_PARTS = [
+  { id: 'fn-date',  build: (s, now) => `${two(now.getMonth() + 1)}-${two(now.getDate())}-${two(now.getFullYear() % 100)}` },
+  { id: 'fn-time',  build: (s, now) => `${two(now.getHours())}-${two(now.getMinutes())}` },
+  { id: 'fn-res',   build: (s) => `${s.width}x${s.height}` },
+  { id: 'fn-fps',   build: (s) => `${s.fps}fps` },
+  { id: 'fn-zoom',  build: (s) => `${s.zoom}pct` },
+  { id: 'fn-speed', build: (s) => `${s.speed}x` },
+  { id: 'fn-dur',   build: (s) => `${s.duration}s` },
+  { id: 'fn-bg',    build: (s) => s.background },
+];
+
+function sanitizeFilename(name) {
+  return name
+    .replace(/[\\/:*?"<>|]/g, '-')  // characters Windows rejects outright
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[_.\s]+|[_.\s]+$/g, '');
+}
+
+function buildOutputName(s, now = new Date()) {
+  const base = String(s.filename || 'animation').replace(/\.html?$/i, '');
+  const prefix = (elFilenamePrefix.value || '').trim();
+
+  const parts = [];
+  if (prefix) parts.push(prefix);
+  parts.push(base);
+  for (const part of FILENAME_PARTS) {
+    const cb = $(part.id);
+    if (cb && cb.checked) parts.push(String(part.build(s, now)));
+  }
+
+  return sanitizeFilename(parts.join('_')) + '.' + FORMAT_EXT[s.outputFormat];
+}
+
+// The settings currently showing in the form, shaped like a job so the same
+// name builder drives both the live preview and the real export.
+function currentNameSettings() {
+  const resolution = RESOLUTIONS[$('job-resolution').value] || RESOLUTIONS['2k'];
+  const filename = selectedFilePaths.length >= 1
+    ? selectedFilePaths[0].replace(/^.*[\\/]/, '')
+    : 'animation.html';
+
+  return {
+    filename,
+    width: resolution.width,
+    height: resolution.height,
+    fps: parseInt($('job-fps').value, 10),
+    zoom: Math.max(10, Math.min(500, parseInt($('job-zoom').value, 10) || 100)),
+    speed: parseFloat($('job-speed').value) || 1,
+    duration: parseFloat($('job-duration').value),
+    background: document.querySelector('input[name="bg"]:checked')?.value || 'black',
+    outputFormat: elOutputFormat.value,
+  };
+}
+
+function updateFilenamePreview() {
+  const el = $('filename-preview');
+  if (!el) return;
+  const s = currentNameSettings();
+  el.textContent = buildOutputName(s);
+  el.title = el.textContent;
+  if (selectedFilePaths.length > 1) {
+    el.textContent += `   (+${selectedFilePaths.length - 1} more, each named after its own file)`;
+  }
+}
+
 // ── Auto-scaled zoom ──────────────────────────────────────────────────────
 
 function autoZoomFor(resKey) {
@@ -139,6 +213,9 @@ function applyAutoZoom() {
       ? `— 1080p = 100%, now ${zoomInput.value}%`
       : '— off, using the value above';
   }
+
+  // Zoom is set programmatically here, so no input event fires for it.
+  updateFilenamePreview();
 }
 
 // ── File selection ────────────────────────────────────────────────────────
@@ -175,6 +252,7 @@ function handleFilesSelected(filePaths) {
 
   elAddJobBtn.textContent = valid.length === 1 ? 'Add to Queue' : `Add ${valid.length} to Queue`;
   checkTransparentFormatNote();
+  updateFilenamePreview();
 }
 
 function clearFileSelection() {
@@ -186,6 +264,7 @@ function clearFileSelection() {
   elPreviewFrame.src = 'about:blank';
   elSelectedName.textContent = '';
   elMultiFileList.innerHTML = '';
+  updateFilenamePreview();
 }
 
 // ── Add job ───────────────────────────────────────────────────────────────
@@ -201,9 +280,10 @@ function buildJob(filePath) {
   const deterministicJS = $('job-deterministic-js')?.checked !== false;
   const outputFormat = elOutputFormat.value;
   const filename   = filePath.replace(/^.*[\\/]/, '');
-  const base       = filename.replace(/\.html?$/i, '');
-  const prefix     = (elFilenamePrefix.value || '').trim();
-  const outName    = (prefix ? prefix + '_' + base : base) + '.' + FORMAT_EXT[outputFormat];
+  const outName    = buildOutputName({
+    filename, width: resolution.width, height: resolution.height,
+    fps, zoom, speed, duration, background, outputFormat,
+  });
   const sep        = outputFolder.includes('\\') ? '\\' : '/';
   const outputPath = (outputFolder.endsWith(sep) ? outputFolder : outputFolder + sep) + outName;
 
@@ -532,7 +612,14 @@ function wireEvents() {
   $('job-resolution').addEventListener('change', () => { applyAutoZoom(); refreshConcurrencyBadge(); });
   $('job-zoom-auto').addEventListener('change', applyAutoZoom);
 
+  // Delegated so every control in the sidebar — prefix, format, the filename
+  // checkboxes, and all the job settings — refreshes the preview.
+  const sidebar = document.querySelector('.sidebar');
+  sidebar.addEventListener('input', updateFilenamePreview);
+  sidebar.addEventListener('change', updateFilenamePreview);
+
   applyAutoZoom();
+  updateFilenamePreview();
 }
 
 async function browseFile() {

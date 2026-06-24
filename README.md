@@ -91,6 +91,29 @@ After installing, double-click `FrameForge.vbs` on your Desktop to launch the ap
 
 ---
 
+## Output filenames
+
+Exports are named `<file>_mm-dd-yy_hh-mm` by default — dashes rather than slashes and colons, because `\ / : * ? " < > |` are illegal in Windows filenames. A live preview under **Include in Filename** shows exactly what the next export will be called.
+
+Tick any of these to append them, in this order:
+
+| Part | Example |
+|---|---|
+| Date *(default on)* | `07-25-26` |
+| Time *(default on)* | `14-27` — 24-hour |
+| Resolution | `2560x1440` |
+| Frame rate | `30fps` |
+| Zoom | `133pct` |
+| Speed | `0.5x` |
+| Duration | `5s` |
+| Background | `black` |
+
+With everything on: `YT_2026_MyAnim_07-25-26_14-27_2560x1440_30fps_133pct_0.5x_5s_black.mov`
+
+Both timestamp parts can be turned off if you'd rather name by settings alone. Since the timestamp only resolves to the minute, an export that would overwrite an existing file is suffixed instead — `name.mp4`, `name_2.mp4`, `name_3.mp4` — and the substitution is noted in the log.
+
+---
+
 ## Tech stack
 
 - [Electron](https://www.electronjs.org/) — desktop shell

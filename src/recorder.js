@@ -25,6 +25,21 @@ function cancelRecording() {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// The default filename is only precise to the minute, so re-exporting the same
+// animation twice in a row would otherwise overwrite the first video without
+// warning. Suffix instead: name.mp4 → name_2.mp4 → name_3.mp4.
+function uniqueOutputPath(target) {
+  if (!fs.existsSync(target)) return target;
+  const dir = path.dirname(target);
+  const ext = path.extname(target);
+  const base = path.basename(target, ext);
+  for (let n = 2; n < 10000; n++) {
+    const candidate = path.join(dir, `${base}_${n}${ext}`);
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+  return target;
+}
+
 // Poll until the page reports fonts, images and the load event are all done.
 // This replaces a blind fixed delay: a slow Google Fonts response used to mean
 // the first frames rendered in a fallback font, while a page with no external
@@ -90,6 +105,14 @@ async function recordHTML(jobConfig, sendEvent) {
 
   fs.mkdirSync(tempDir, { recursive: true });
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  // Resolved once, up front, so the whole job reports the same final path.
+  const finalPath = uniqueOutputPath(outputPath);
+  if (finalPath !== outputPath) {
+    sendEvent('recording:log', {
+      message: `[${jobId}] ${path.basename(outputPath)} exists — writing ${path.basename(finalPath)} instead.`,
+    });
+  }
 
   let browser = null;
 
@@ -242,7 +265,7 @@ async function recordHTML(jobConfig, sendEvent) {
 
     await encodeFrames({
       frameDir: tempDir,
-      outputPath,
+      outputPath: finalPath,
       format: outputFormat,
       fps,
       speed,
@@ -253,13 +276,13 @@ async function recordHTML(jobConfig, sendEvent) {
     });
 
     progress(100, 'Complete');
-    log(`[${jobId}] Done → ${outputPath}`);
+    log(`[${jobId}] Done → ${finalPath}`);
 
     activeTempDirs.delete(tempDir);
     cancelFlags.delete(jobId);
     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
 
-    sendEvent('recording:done', { jobId, outputPath });
+    sendEvent('recording:done', { jobId, outputPath: finalPath });
   } catch (error) {
     if (browser) {
       try { await browser.close(); } catch (_) {}

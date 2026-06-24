@@ -18,7 +18,7 @@
     <div class="titlebar-brand">
       <span class="titlebar-icon">▶</span>
       <span class="titlebar-name">FrameForge</span>
-      <span class="titlebar-version">v1.0.2</span>
+      <span class="titlebar-version">v1.0.3</span>
     </div>
     <div class="titlebar-status" id="global-status">Idle</div>
   </header>
@@ -53,6 +53,25 @@
         <div class="field">
           <label class="field-label" for="filename-prefix">Filename Prefix</label>
           <input class="input mono" id="filename-prefix" type="text" placeholder="e.g. YT_2024_" spellcheck="false">
+        </div>
+
+        <div class="field">
+          <label class="field-label">Include in Filename</label>
+          <div class="check-grid">
+            <label class="check-mini" title="Export date as mm-dd-yy (slashes aren't allowed in filenames)"><input type="checkbox" id="fn-date" checked><span>Date</span></label>
+            <label class="check-mini" title="Export time as hh-mm, 24-hour"><input type="checkbox" id="fn-time" checked><span>Time</span></label>
+            <label class="check-mini" title="e.g. 2560x1440"><input type="checkbox" id="fn-res"><span>Resolution</span></label>
+            <label class="check-mini" title="e.g. 30fps"><input type="checkbox" id="fn-fps"><span>Frame rate</span></label>
+            <label class="check-mini" title="e.g. 133pct"><input type="checkbox" id="fn-zoom"><span>Zoom</span></label>
+            <label class="check-mini" title="e.g. 0.5x"><input type="checkbox" id="fn-speed"><span>Speed</span></label>
+            <label class="check-mini" title="e.g. 5s"><input type="checkbox" id="fn-dur"><span>Duration</span></label>
+            <label class="check-mini" title="e.g. black / transparent"><input type="checkbox" id="fn-bg"><span>Background</span></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Filename Preview</label>
+          <div class="filename-preview mono" id="filename-preview">—</div>
         </div>
 
         <div class="format-note" id="format-note" hidden>
