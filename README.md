@@ -9,6 +9,7 @@ Built for motion designers, developers, and YouTube creators who build animation
 ## Features
 
 - **Drag-and-drop or batch import** — drop one file or select dozens at once; they all queue up with the same settings
+- **One-click Add & Export** — adding a file starts the export immediately; add more at any time and they join the queue already running
 - **Renders every animation system frame-accurately** — CSS/WAAPI, SVG SMIL and animated SVG filters, canvas + `requestAnimationFrame`, and `<video>`
 - **MP4, WebM, and ProRes 4444** — standard delivery or transparent alpha channel for compositing
 - **Resolution up to 4K** — HD, 1080p, 1440p, and 4K output
@@ -70,9 +71,11 @@ After installing, double-click `FrameForge.vbs` on your Desktop to launch the ap
 2. **Choose a format** — MP4 for standard use, WebM or ProRes 4444 for transparency
 3. **Add files** — drag `.html` files onto the drop zone, or click Browse. Hold `Ctrl`/`Shift` to select multiple files at once
 4. **Adjust settings** — duration, start delay, resolution, framerate, zoom, playback speed, background color
-5. Click **Add to Queue** (or **Add N to Queue** for a batch)
-6. Click **Export All** — FrameForge runs jobs in parallel based on your system's available resources
+5. Click **Add & Export** (or **Add N & Export** for a batch) — exporting starts immediately
+6. Keep working: drop in another file and hit the button again at any time. If an export is still running, the new job joins that queue and gets picked up automatically — no second click needed
 7. When done, click **Show in Folder** to find your video
+
+**Export All** in the queue header is still there as a manual re-run for anything left sitting in the queue (for example after a cancel).
 
 ---
 

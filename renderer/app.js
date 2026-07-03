@@ -20,7 +20,13 @@ const ZOOM_BASE_HEIGHT = 1080;
 let jobs = [];
 let isExporting = false;
 let stopRequested = false;
+// Live count of running export workers. Adding a job mid-export tops this up
+// instead of starting a second, competing pool.
+let activeWorkers = 0;
 let selectedFilePaths = [];
+// Set by Redo so a re-run keeps its original output name instead of inheriting
+// the name of whatever file it was loaded from. Consumed once, then cleared.
+let filenameOverride = null;
 let outputFolder = '';
 let jobIdCounter = 0;
 let systemInfo = { cpus: 4, freeMemGB: 8 }; // sensible defaults until we hear from main
@@ -105,15 +111,21 @@ function calcAdaptiveConcurrency(readyJobs) {
   return Math.max(1, Math.min(n, readyJobs.length));
 }
 
+// Jobs that are either waiting or in flight — the pool that concurrency is
+// sized against, so a job added mid-export is counted alongside running ones.
+function activePool() {
+  return jobs.filter((j) => j.status === 'ready' || j.status === 'recording');
+}
+
 function refreshConcurrencyBadge() {
   if (!elConcurrencyBadge) return;
-  const ready = jobs.filter((j) => j.status === 'ready');
-  if (ready.length === 0) {
+  const pool = activePool();
+  if (pool.length === 0) {
     elConcurrencyBadge.textContent = '';
     return;
   }
-  const n = calcAdaptiveConcurrency(ready);
-  elConcurrencyBadge.textContent = `· Auto: ${n} parallel`;
+  const n = calcAdaptiveConcurrency(pool);
+  elConcurrencyBadge.textContent = isExporting ? `· ${n} parallel` : `· Auto: ${n} parallel`;
 }
 
 // ── Output filename ───────────────────────────────────────────────────────
@@ -228,6 +240,8 @@ function handleFilesSelected(filePaths) {
   }
 
   selectedFilePaths = valid;
+  // A fresh selection is not a redo; redoJob re-sets this straight after.
+  filenameOverride = null;
   elSelectedFile.hidden = false;
   elDropZone.hidden = true;
   elAddJobBtn.disabled = false;
@@ -250,17 +264,24 @@ function handleFilesSelected(filePaths) {
       .join('');
   }
 
-  elAddJobBtn.textContent = valid.length === 1 ? 'Add to Queue' : `Add ${valid.length} to Queue`;
+  elAddJobBtn.textContent = addButtonLabel(valid.length);
   checkTransparentFormatNote();
   updateFilenamePreview();
 }
 
+// The single action button: adds to the queue AND kicks off the export. When a
+// run is already going it still just adds, and the running pool picks it up.
+function addButtonLabel(n) {
+  return n > 1 ? `Add ${n} & Export` : 'Add & Export';
+}
+
 function clearFileSelection() {
   selectedFilePaths = [];
+  filenameOverride = null;
   elSelectedFile.hidden = true;
   elDropZone.hidden = false;
   elAddJobBtn.disabled = true;
-  elAddJobBtn.textContent = 'Add to Queue';
+  elAddJobBtn.textContent = addButtonLabel(1);
   elPreviewFrame.src = 'about:blank';
   elSelectedName.textContent = '';
   elMultiFileList.innerHTML = '';
@@ -269,7 +290,7 @@ function clearFileSelection() {
 
 // ── Add job ───────────────────────────────────────────────────────────────
 
-function buildJob(filePath) {
+function buildJob(filePath, filenameOverride) {
   const resolution = RESOLUTIONS[$('job-resolution').value] || RESOLUTIONS['2k'];
   const fps        = parseInt($('job-fps').value, 10);
   const duration   = parseFloat($('job-duration').value);
@@ -279,7 +300,7 @@ function buildJob(filePath) {
   const background = document.querySelector('input[name="bg"]:checked')?.value || 'black';
   const deterministicJS = $('job-deterministic-js')?.checked !== false;
   const outputFormat = elOutputFormat.value;
-  const filename   = filePath.replace(/^.*[\\/]/, '');
+  const filename   = filenameOverride || filePath.replace(/^.*[\\/]/, '');
   const outName    = buildOutputName({
     filename, width: resolution.width, height: resolution.height,
     fps, zoom, speed, duration, background, outputFormat,
@@ -310,20 +331,27 @@ function buildJob(filePath) {
 }
 
 function addJobs() {
+  addFileJobs();
+  // One button, no second step: whatever was just added starts exporting now,
+  // or joins the pool if an export is already running.
+  startOrTopUpExport();
+}
+
+function addFileJobs() {
   if (selectedFilePaths.length === 0) return;
   if (!outputFolder) {
     appendLog('Please select an output folder first.', 'error');
     return;
   }
   for (const fp of selectedFilePaths) {
-    const job = buildJob(fp);
+    const job = buildJob(fp, selectedFilePaths.length === 1 ? filenameOverride : null);
     jobs.push(job);
     renderJobCard(job);
   }
   updateQueueUI();
   appendLog(
     selectedFilePaths.length === 1
-      ? `Job added: ${selectedFilePaths[0].replace(/^.*[\\/]/, '')}  — ${RESOLUTIONS[$('job-resolution').value]?.width ?? 2560}×${RESOLUTIONS[$('job-resolution').value]?.height ?? 1440}`
+      ? `Job added: ${selectedFilePaths[0].replace(/^.*[\\/]/, '')} — ${RESOLUTIONS[$('job-resolution').value]?.width ?? 2560}×${RESOLUTIONS[$('job-resolution').value]?.height ?? 1440}`
       : `${selectedFilePaths.length} jobs added to queue.`,
     'accent'
   );
@@ -332,8 +360,12 @@ function addJobs() {
 
 // ── Queue management ──────────────────────────────────────────────────────
 
+// Only a job that's actively recording is off-limits — now that exports run
+// almost continuously, blocking edits for the whole session would lock the
+// queue down permanently.
 function removeJob(jobId) {
-  if (isExporting) return;
+  const job = jobs.find((j) => j.jobId === jobId);
+  if (!job || job.status === 'recording') return;
   jobs = jobs.filter((j) => j.jobId !== jobId);
   const card = document.querySelector(`.job-card[data-id="${jobId}"]`);
   if (card) card.remove();
@@ -341,21 +373,28 @@ function removeJob(jobId) {
 }
 
 function clearAll() {
-  if (isExporting) return;
-  jobs = [];
-  elJobList.innerHTML = '';
-  elJobList.appendChild(elEmptyState);
-  elEmptyState.style.display = '';
+  const keep = jobs.filter((j) => j.status === 'recording');
+  for (const job of jobs) {
+    if (job.status === 'recording') continue;
+    const card = document.querySelector(`.job-card[data-id="${job.jobId}"]`);
+    if (card) card.remove();
+  }
+  jobs = keep;
+  if (jobs.length === 0) {
+    elJobList.appendChild(elEmptyState);
+    elEmptyState.style.display = '';
+  }
   updateQueueUI();
 }
 
 function updateQueueUI() {
   const count = jobs.length;
+  const readyCount = jobs.filter((j) => j.status === 'ready').length;
   elQueueCount.textContent = `${count} job${count !== 1 ? 's' : ''}`;
-  elExportAll.disabled = count === 0 || isExporting;
-  elClearAll.disabled = isExporting;
+  elExportAll.disabled = readyCount === 0;
+  elClearAll.disabled = count === 0;
   elEmptyState.style.display = count === 0 ? '' : 'none';
-  if (!isExporting) refreshConcurrencyBadge();
+  refreshConcurrencyBadge();
 }
 
 // ── Job card rendering ────────────────────────────────────────────────────
@@ -378,11 +417,13 @@ function renderJobCard(job) {
     </div>
     <div class="job-actions">
       <button class="btn-show-folder" hidden title="Open output folder">Show in Folder</button>
+      <button class="btn-redo-job" hidden title="Load this job's settings back into Add Job">↻ Redo</button>
       <button class="btn-remove-job" title="Remove job">✕</button>
     </div>
   `;
 
   card.querySelector('.btn-remove-job').addEventListener('click', () => removeJob(job.jobId));
+  card.querySelector('.btn-redo-job').addEventListener('click', () => redoJob(job.jobId));
   card.querySelector('.btn-show-folder').addEventListener('click', () => {
     if (job.outputFilePath) window.frameforge.showFile(job.outputFilePath);
   });
@@ -403,7 +444,12 @@ function updateJobCard(job) {
   const fillEl     = card.querySelector('.job-progress-fill');
   const errorEl    = card.querySelector('.job-error-msg');
   const showBtn    = card.querySelector('.btn-show-folder');
+  const redoBtn    = card.querySelector('.btn-redo-job');
   const removeBtn  = card.querySelector('.btn-remove-job');
+
+  // Redo is offered once a job has stopped running — that's when you'd know you
+  // want it back with different settings.
+  redoBtn.hidden = !(job.status === 'done' || job.status === 'error');
 
   if (job.status === 'recording') {
     progressEl.hidden = false;
@@ -432,6 +478,43 @@ function updateJobCard(job) {
   }
 }
 
+// ── Redo: load a finished job's settings back into the Add Job panel ───────
+
+function redoJob(jobId) {
+  const job = jobs.find((j) => j.jobId === jobId);
+  if (!job) return;
+
+  $('job-duration').value = job.duration;
+  $('job-delay').value    = job.startDelay;
+  $('job-fps').value      = String(job.fps);
+  $('job-speed').value    = String(job.speed);
+
+  const resKey = Object.keys(RESOLUTIONS).find(
+    (k) => RESOLUTIONS[k].width === job.width && RESOLUTIONS[k].height === job.height
+  );
+  if (resKey) $('job-resolution').value = resKey;
+
+  // Restore the exact zoom this job ran at, which means auto has to stand down —
+  // otherwise it would immediately overwrite the value from the resolution.
+  $('job-zoom-auto').checked = false;
+  applyAutoZoom();
+  $('job-zoom').value = job.zoom;
+
+  const bgRadio = document.querySelector(`input[name="bg"][value="${job.background}"]`);
+  if (bgRadio) bgRadio.checked = true;
+
+  elOutputFormat.value = job.outputFormat;
+  const djs = $('job-deterministic-js');
+  if (djs) djs.checked = job.deterministicJS !== false;
+  checkTransparentFormatNote();
+
+  handleFilesSelected([job.filePath]);
+  filenameOverride = job.filename;
+
+  $('panel-add-job').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  appendLog(`Loaded "${job.filename}" back into Add Job — adjust settings, then Add & Export.`, 'accent');
+}
+
 function setJobProgress(jobId, pct) {
   const job = jobs.find((j) => j.jobId === jobId);
   if (!job) return;
@@ -442,32 +525,58 @@ function setJobProgress(jobId, pct) {
   card.querySelector('.job-progress').hidden = false;
 }
 
-// ── Export queue (parallel concurrency pool) ──────────────────────────────
+// ── Export queue (live parallel pool) ─────────────────────────────────────
+//
+// The pool pulls from `jobs` itself rather than from a snapshot taken at start,
+// so anything added while an export is running is picked up automatically —
+// that's what lets "Add & Export" work as an add-to-queue button mid-run.
 
-async function exportAll() {
-  const readyJobs = jobs.filter((j) => j.status === 'ready');
-  if (readyJobs.length === 0) return;
+// Claiming is safe without a lock: runJob() flips the job to 'recording'
+// synchronously, in the same tick as this call, before any await can interleave.
+function takeNextReadyJob() {
+  return jobs.find((j) => j.status === 'ready') || null;
+}
 
-  const concurrency = calcAdaptiveConcurrency(readyJobs);
-
-  isExporting = true;
-  stopRequested = false;
-  elExportAll.hidden = true;
-  elCancelBtn.hidden = false;
-  elClearAll.disabled = true;
-  setGlobalStatus('recording');
-  if (elConcurrencyBadge) elConcurrencyBadge.textContent = `· ${concurrency} parallel`;
-  appendLog(`Starting export — ${readyJobs.length} job(s) at ${concurrency} parallel (${systemInfo.cpus} CPUs, ${systemInfo.freeMemGB.toFixed(1)} GB free RAM).`);
-
-  // Concurrency pool: N workers each drain from a shared queue
-  const queue = [...readyJobs];
-  const worker = async () => {
-    while (queue.length > 0 && !stopRequested) {
-      await runJob(queue.shift());
+async function exportWorker() {
+  activeWorkers++;
+  try {
+    while (!stopRequested) {
+      const job = takeNextReadyJob();
+      if (!job) break;
+      await runJob(job);
     }
-  };
-  await Promise.all(Array.from({ length: concurrency }, worker));
+  } finally {
+    activeWorkers--;
+    if (activeWorkers === 0) endExportSession();
+  }
+}
 
+// Starts the pool if idle, or adds workers to a running one if the current
+// concurrency budget allows. Safe to call on every single job added.
+function startOrTopUpExport() {
+  const pending = jobs.filter((j) => j.status === 'ready').length;
+  if (pending === 0) return;
+
+  if (activeWorkers === 0) {
+    stopRequested = false;
+    isExporting = true;
+    elExportAll.hidden = true;
+    elCancelBtn.hidden = false;
+    setGlobalStatus('recording');
+    appendLog(
+      `Starting export — ${pending} job(s) queued (${systemInfo.cpus} CPUs, ${systemInfo.freeMemGB.toFixed(1)} GB free RAM).`
+    );
+  }
+
+  const target = calcAdaptiveConcurrency(activePool());
+  const spawn = Math.min(target - activeWorkers, pending);
+  for (let i = 0; i < spawn; i++) {
+    exportWorker().catch((err) => appendLog('Worker error: ' + err.message, 'error'));
+  }
+  updateQueueUI();
+}
+
+function endExportSession() {
   isExporting = false;
   elExportAll.hidden = false;
   elCancelBtn.hidden = true;
@@ -593,7 +702,7 @@ function wireEvents() {
   elClearFile.addEventListener('click', clearFileSelection);
 
   elAddJobBtn.addEventListener('click', addJobs);
-  elExportAll.addEventListener('click', exportAll);
+  elExportAll.addEventListener('click', startOrTopUpExport);
   elClearAll.addEventListener('click', clearAll);
   elCancelBtn.addEventListener('click', cancelExport);
 

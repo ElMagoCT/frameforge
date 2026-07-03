@@ -747,6 +747,26 @@ input[type='number'].input::-webkit-outer-spin-button {
 
 .btn-remove-job:hover { color: var(--error); }
 
+.btn-redo-job {
+  background: none;
+  border: 1px solid var(--border-focus);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.btn-redo-job:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
 /* ── Log panel ───────────────────────────────────────────────────────────── */
 
 .log-panel {
@@ -849,4 +869,14 @@ input[type='number'].input::-webkit-outer-spin-button {
   font-size: 10px;
   color: var(--text-muted);
   letter-spacing: 0.03em;
+}
+
+/* ── Add & Export hint ───────────────────────────────────────────────────── */
+
+.add-hint {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  text-align: center;
+  margin-top: 7px;
 }
