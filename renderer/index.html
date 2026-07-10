@@ -11,6 +11,16 @@
 </head>
 <body>
 
+<!-- Full-window drop target. pointer-events:none is essential — it must not
+     intercept the drop event it's advertising. -->
+<div class="drop-overlay" id="drop-overlay" hidden>
+  <div class="drop-overlay-inner">
+    <div class="drop-overlay-icon">⬇</div>
+    <div class="drop-overlay-label">Drop HTML files anywhere</div>
+    <div class="drop-overlay-sub">Then press Enter to export</div>
+  </div>
+</div>
+
 <div class="app">
 
   <!-- ── Title bar ─────────────────────────────────────────── -->
@@ -18,7 +28,7 @@
     <div class="titlebar-brand">
       <span class="titlebar-icon">▶</span>
       <span class="titlebar-name">FrameForge</span>
-      <span class="titlebar-version">v1.0.4</span>
+      <span class="titlebar-version">v1.0.5</span>
     </div>
     <div class="titlebar-status" id="global-status">Idle</div>
   </header>
@@ -88,9 +98,9 @@
           <div class="drop-zone-grid"></div>
           <div class="drop-zone-content">
             <div class="drop-icon">⬇</div>
-            <div class="drop-label">Drop HTML file here</div>
+            <div class="drop-label">Drop HTML files here</div>
             <div class="drop-sublabel">or</div>
-            <button class="btn btn-secondary btn-sm" id="btn-browse">Browse File</button>
+            <button class="btn btn-secondary btn-sm" id="btn-browse">Browse Files</button>
           </div>
         </div>
 

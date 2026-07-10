@@ -233,10 +233,14 @@ function applyAutoZoom() {
 // ── File selection ────────────────────────────────────────────────────────
 
 function handleFilesSelected(filePaths) {
-  const valid = filePaths.filter((fp) => fp && fp.match(/\.html?$/i));
+  let valid = filePaths.filter((fp) => fp && fp.match(/\.html?$/i));
   if (valid.length === 0) {
     appendLog('No valid .html files in selection.', 'error');
     return;
+  }
+  if (valid.length > 20) {
+    appendLog(`Selection limited to 20 files — first 20 used.`, 'warn');
+    valid = valid.slice(0, 20);
   }
 
   selectedFilePaths = valid;
@@ -684,19 +688,79 @@ function checkTransparentFormatNote() {
 
 // ── Event wiring ──────────────────────────────────────────────────────────
 
-function wireEvents() {
-  document.addEventListener('dragover', (e) => e.preventDefault());
-  document.addEventListener('drop', (e) => e.preventDefault());
+// ── Window-wide file drop ─────────────────────────────────────────────────
 
-  elDropZone.addEventListener('dragover', (e) => { e.preventDefault(); elDropZone.classList.add('dragover'); });
-  elDropZone.addEventListener('dragleave', () => elDropZone.classList.remove('dragover'));
-  elDropZone.addEventListener('drop', (e) => {
+// dragenter/dragleave fire for every element the cursor crosses, so a plain
+// boolean flickers. Counting enters against leaves is what keeps the overlay
+// stable while dragging across the UI.
+let dragDepth = 0;
+
+function isFileDrag(e) {
+  const types = e.dataTransfer?.types;
+  return !!types && Array.prototype.includes.call(types, 'Files');
+}
+
+function showDropOverlay(show) {
+  const overlay = $('drop-overlay');
+  if (overlay) overlay.hidden = !show;
+}
+
+function wireWindowDrop() {
+  document.addEventListener('dragenter', (e) => {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
-    elDropZone.classList.remove('dragover');
-    const files = Array.from(e.dataTransfer?.files || []);
-    const paths = files.map((f) => f.path).filter(Boolean);
-    if (paths.length > 0) handleFilesSelected(paths);
+    dragDepth++;
+    showDropOverlay(true);
   });
+
+  document.addEventListener('dragover', (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+
+  document.addEventListener('dragleave', (e) => {
+    if (!isFileDrag(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) showDropOverlay(false);
+  });
+
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    showDropOverlay(false);
+
+    const files = Array.from(e.dataTransfer?.files || []);
+    // file.path is deprecated in Electron 32+; use webUtils.getPathForFile
+    const paths = files.map((f) => window.frameforge.getPathForFile(f)).filter(Boolean);
+    if (paths.length === 0) return;
+
+    handleFilesSelected(paths);
+  });
+}
+
+// ── Enter to export ───────────────────────────────────────────────────────
+
+function wireEnterKey() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.repeat) return;
+
+    const el = document.activeElement;
+    const tag = el ? el.tagName : '';
+
+    // Enter belongs to a focused button (its own activation) — don't hijack it.
+    if (tag === 'BUTTON') return;
+    if (elAddJobBtn.disabled) return;
+
+    e.preventDefault();
+    elAddJobBtn.click();
+  });
+}
+
+function wireEvents() {
+  wireWindowDrop();
+  wireEnterKey();
+
   elDropZone.addEventListener('click', () => browseFile());
   elBrowseBtn.addEventListener('click', (e) => { e.stopPropagation(); browseFile(); });
   elClearFile.addEventListener('click', clearFileSelection);

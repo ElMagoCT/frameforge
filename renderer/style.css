@@ -819,6 +819,52 @@ input[type='number'].input::-webkit-outer-spin-button {
 .log-line--error { color: var(--error); }
 .log-line--accent { color: var(--accent); }
 
+/* ── Full-window drop overlay ────────────────────────────────────────────── */
+
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 14, 18, 0.86);
+  border: 2px dashed var(--accent);
+  /* Critical: the overlay must not swallow the drop it is advertising, and it
+     must not fire spurious dragleave events as the cursor moves over it. */
+  pointer-events: none;
+}
+
+.drop-overlay[hidden] { display: none; }
+
+.drop-overlay-inner {
+  text-align: center;
+  color: var(--accent);
+}
+
+.drop-overlay-icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+
+.drop-overlay-label {
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.drop-overlay-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 8px;
+}
+
 /* ── Compact checkbox grid (filename parts) ──────────────────────────────── */
 
 .check-grid {

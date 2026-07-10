@@ -1,12 +1,14 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('frameforge', {
   getSystemInfo: () => ipcRenderer.invoke('get:systemInfo'),
   getDefaultOutputFolder: () => ipcRenderer.invoke('get:defaultOutputFolder'),
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  // Electron 32+ deprecates file.path; webUtils.getPathForFile is the correct API
+  getPathForFile: (file) => webUtils.getPathForFile(file),
 
   startRecording: (jobConfig) => ipcRenderer.send('record:start', jobConfig),
   cancelRecording: () => ipcRenderer.send('record:cancel'),
