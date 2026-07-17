@@ -1,6 +1,6 @@
 {
   "name": "frameforge",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "HTML animation to video exporter",
   "main": "main.js",
   "type": "commonjs",

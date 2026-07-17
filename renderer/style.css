@@ -300,6 +300,50 @@ input[type='number'].input::-webkit-outer-spin-button {
   margin-bottom: 10px;
 }
 
+/* ── Source tabs ─────────────────────────────────────────────────────────── */
+
+.source-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+
+.source-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 5px 0;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.source-tab:hover { color: var(--text-dim); }
+
+.source-tab.active {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* ── Paste area ──────────────────────────────────────────────────────────── */
+
+textarea.paste-area {
+  height: 130px;
+  resize: none;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 8px;
+}
+
 /* ── Drop zone ───────────────────────────────────────────────────────────── */
 
 .drop-zone {
@@ -925,4 +969,21 @@ input[type='number'].input::-webkit-outer-spin-button {
   line-height: 1.45;
   text-align: center;
   margin-top: 7px;
+}
+
+/* ── AI prompt panel ─────────────────────────────────────────────────────── */
+
+.ai-prompt-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.ai-prompt-confirm {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--success);
+  text-align: center;
+  margin-top: 8px;
 }

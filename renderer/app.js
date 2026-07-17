@@ -11,10 +11,10 @@ const RESOLUTIONS = {
 
 const FORMAT_EXT = { mp4: 'mp4', webm: 'webm', prores: 'mov' };
 
-// Animations are authored against a 1920×1080 stage (that's what the templates
-// use). Rendering that stage into a larger viewport leaves it undersized with
-// dead space around it, so zoom has to track the output resolution. 1080p is
-// the 100% baseline.
+// Animations are authored against a 1920×1080 stage (that's what the AI prompt
+// tells people to build, and what the templates use). Rendering that stage into
+// a larger viewport leaves it undersized with dead space around it, so zoom has
+// to track the output resolution. 1080p is the 100% baseline.
 const ZOOM_BASE_HEIGHT = 1080;
 
 let jobs = [];
@@ -25,8 +25,9 @@ let stopRequested = false;
 let activeWorkers = 0;
 let selectedFilePaths = [];
 // Set by Redo so a re-run keeps its original output name instead of inheriting
-// the name of whatever file it was loaded from. Consumed once, then cleared.
+// the temp filename a pasted job was written under. Consumed once, then cleared.
 let filenameOverride = null;
+let activeTab = 'files'; // 'files' | 'paste'
 let outputFolder = '';
 let jobIdCounter = 0;
 let systemInfo = { cpus: 4, freeMemGB: 8 }; // sensible defaults until we hear from main
@@ -38,6 +39,12 @@ const jobCallbacks = new Map();
 
 const $ = (id) => document.getElementById(id);
 
+const elTabFiles        = $('tab-files');
+const elTabPaste        = $('tab-paste');
+const elPaneFiles       = $('pane-files');
+const elPanePaste       = $('pane-paste');
+const elPasteHtml       = $('paste-html');
+const elPasteName       = $('paste-name');
 const elDropZone        = $('drop-zone');
 const elBrowseBtn       = $('btn-browse');
 const elSelectedFile    = $('selected-file');
@@ -174,9 +181,14 @@ function buildOutputName(s, now = new Date()) {
 // name builder drives both the live preview and the real export.
 function currentNameSettings() {
   const resolution = RESOLUTIONS[$('job-resolution').value] || RESOLUTIONS['2k'];
-  const filename = selectedFilePaths.length >= 1
-    ? selectedFilePaths[0].replace(/^.*[\\/]/, '')
-    : 'animation.html';
+  let filename;
+  if (activeTab === 'paste') {
+    filename = (elPasteName.value.trim() || 'pasted') + '.html';
+  } else if (selectedFilePaths.length >= 1) {
+    filename = filenameOverride || selectedFilePaths[0].replace(/^.*[\\/]/, '');
+  } else {
+    filename = 'animation.html';
+  }
 
   return {
     filename,
@@ -334,8 +346,12 @@ function buildJob(filePath, filenameOverride) {
   };
 }
 
-function addJobs() {
-  addFileJobs();
+async function addJobs() {
+  if (activeTab === 'paste') {
+    await addPasteJob();
+  } else {
+    addFileJobs();
+  }
   // One button, no second step: whatever was just added starts exporting now,
   // or joins the pool if an export is already running.
   startOrTopUpExport();
@@ -360,6 +376,31 @@ function addFileJobs() {
     'accent'
   );
   clearFileSelection();
+}
+
+async function addPasteJob() {
+  const html = elPasteHtml.value.trim();
+  if (!html) return;
+  if (!outputFolder) {
+    appendLog('Please select an output folder first.', 'error');
+    return;
+  }
+  const name = (elPasteName.value.trim() || 'pasted').replace(/[^a-zA-Z0-9_-]/g, '_');
+  let filePath;
+  try {
+    filePath = await window.frameforge.saveHtmlToTemp(html, name);
+  } catch (err) {
+    appendLog('Failed to save pasted HTML: ' + err.message, 'error');
+    return;
+  }
+  const job = buildJob(filePath, name + '.html');
+  jobs.push(job);
+  renderJobCard(job);
+  updateQueueUI();
+  appendLog(`Paste job added: ${job.filename} — ${job.width}×${job.height}`, 'accent');
+  elPasteHtml.value = '';
+  elPasteName.value = '';
+  checkPasteReady();
 }
 
 // ── Queue management ──────────────────────────────────────────────────────
@@ -512,11 +553,14 @@ function redoJob(jobId) {
   if (djs) djs.checked = job.deterministicJS !== false;
   checkTransparentFormatNote();
 
+  switchTab('files');
   handleFilesSelected([job.filePath]);
+  // A pasted job's source is a temp file with a mangled name; keep the name the
+  // output was originally written under.
   filenameOverride = job.filename;
 
   $('panel-add-job').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  appendLog(`Loaded "${job.filename}" back into Add Job — adjust settings, then Add & Export.`, 'accent');
+  appendLog(`Loaded "${job.filename}" back into Add Job — adjust settings, then Enter or Add & Export.`, 'accent');
 }
 
 function setJobProgress(jobId, pct) {
@@ -678,6 +722,42 @@ function setGlobalStatus(state) {
   elGlobalStatus.className = state;
 }
 
+// ── AI prompt ────────────────────────────────────────────────────────────
+
+const AI_PROMPT_TEMPLATE = `You are generating an HTML animation file for FrameForge, a desktop video export tool.
+
+== TECHNICAL RULES (required) ==
+• Single self-contained .html file. No external JS/CSS. Google Fonts <link> is fine.
+• Any of these animation techniques will render frame-accurately:
+  – CSS @keyframes / transitions / Web Animations API
+  – SVG SMIL (<animate>, <animateTransform>, <animateMotion>, <set>) and
+    animated SVG filters (feTurbulence + feComponentTransfer noise dissolves, etc.)
+  – requestAnimationFrame, setTimeout, setInterval, <canvas> drawing
+  – <video> elements
+  FrameForge pauses all of these and seeks each one to the exact frame time, so
+  motion is deterministic no matter how long the capture takes.
+• Drive JS motion from the timestamp your rAF callback receives (or
+  performance.now()), NOT from a counter you increment once per frame. A
+  frame counter desyncs from the real timeline.
+• Viewport: html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  (adjust if a different resolution is requested)
+• Use animation-fill-mode: both on every animated element.
+• Design for a [DURATION]-second animation window. Stagger animation-delay values
+  so everything finishes before time runs out.
+• Background: match the requested color, or leave transparent if unspecified.
+
+== DESIGN GUIDANCE ==
+• Typography: bold, large headlines with Google Fonts (Syne, DM Sans, Space Grotesk,
+  IBM Plex Mono are all great choices). Mix weights for hierarchy.
+• Entrances: translateY(20px)→0 + opacity: 0→1 with staggered delays feel polished.
+• Easing: cubic-bezier(.16,1,.3,1) for snappy-then-settle; ease-in-out for loops.
+• SVG stroke-dashoffset animations look excellent for drawing/line effects.
+• Limit total animated elements to ~30–80 for smooth playback.
+• Prefer @keyframes over bare CSS transitions so timing is explicit.
+
+== OUTPUT ==
+Return only the complete HTML file. No explanation, no markdown fences.`;
+
 // ── Transparent format note ───────────────────────────────────────────────
 
 function checkTransparentFormatNote() {
@@ -687,6 +767,27 @@ function checkTransparentFormatNote() {
 }
 
 // ── Event wiring ──────────────────────────────────────────────────────────
+
+function switchTab(tab) {
+  activeTab = tab;
+  elTabFiles.classList.toggle('active', tab === 'files');
+  elTabPaste.classList.toggle('active', tab === 'paste');
+  elPaneFiles.hidden = tab !== 'files';
+  elPanePaste.hidden = tab !== 'paste';
+  if (tab === 'files') {
+    elAddJobBtn.disabled = selectedFilePaths.length === 0;
+    elAddJobBtn.textContent = addButtonLabel(selectedFilePaths.length);
+  } else {
+    checkPasteReady();
+  }
+  updateFilenamePreview();
+}
+
+function checkPasteReady() {
+  const hasContent = elPasteHtml.value.trim().length > 0;
+  elAddJobBtn.disabled = !hasContent;
+  elAddJobBtn.textContent = addButtonLabel(1);
+}
 
 // ── Window-wide file drop ─────────────────────────────────────────────────
 
@@ -735,6 +836,8 @@ function wireWindowDrop() {
     const paths = files.map((f) => window.frameforge.getPathForFile(f)).filter(Boolean);
     if (paths.length === 0) return;
 
+    // A drop always means "use these files", even if the Paste tab was open.
+    switchTab('files');
     handleFilesSelected(paths);
   });
 }
@@ -748,7 +851,9 @@ function wireEnterKey() {
     const el = document.activeElement;
     const tag = el ? el.tagName : '';
 
-    // Enter belongs to a focused button (its own activation) — don't hijack it.
+    // Enter belongs to the textarea (newline) unless it's Ctrl/Cmd+Enter, and
+    // to a focused button (its own activation) — don't hijack either.
+    if (tag === 'TEXTAREA' && !(e.ctrlKey || e.metaKey)) return;
     if (tag === 'BUTTON') return;
     if (elAddJobBtn.disabled) return;
 
@@ -765,7 +870,11 @@ function wireEvents() {
   elBrowseBtn.addEventListener('click', (e) => { e.stopPropagation(); browseFile(); });
   elClearFile.addEventListener('click', clearFileSelection);
 
-  elAddJobBtn.addEventListener('click', addJobs);
+  elTabFiles.addEventListener('click', () => switchTab('files'));
+  elTabPaste.addEventListener('click', () => switchTab('paste'));
+  elPasteHtml.addEventListener('input', checkPasteReady);
+
+  elAddJobBtn.addEventListener('click', () => addJobs().catch((err) => appendLog('Error: ' + err.message, 'error')));
   elExportAll.addEventListener('click', startOrTopUpExport);
   elClearAll.addEventListener('click', clearAll);
   elCancelBtn.addEventListener('click', cancelExport);
@@ -776,6 +885,16 @@ function wireEvents() {
   });
 
   elClearLog.addEventListener('click', () => { elLogBody.innerHTML = ''; });
+
+  $('btn-copy-prompt').addEventListener('click', () => {
+    const duration = $('job-duration').value || '5';
+    const text = AI_PROMPT_TEMPLATE.replace('[DURATION]', duration);
+    navigator.clipboard.writeText(text).then(() => {
+      const confirm = $('ai-prompt-confirm');
+      confirm.hidden = false;
+      setTimeout(() => { confirm.hidden = true; }, 2000);
+    }).catch(() => appendLog('Failed to copy to clipboard.', 'error'));
+  });
 
   elOutputFormat.addEventListener('change', checkTransparentFormatNote);
   document.querySelectorAll('input[name="bg"]').forEach((r) =>

@@ -28,7 +28,7 @@
     <div class="titlebar-brand">
       <span class="titlebar-icon">▶</span>
       <span class="titlebar-name">FrameForge</span>
-      <span class="titlebar-version">v1.0.5</span>
+      <span class="titlebar-version">v1.0.6</span>
     </div>
     <div class="titlebar-status" id="global-status">Idle</div>
   </header>
@@ -93,29 +93,50 @@
       <section class="panel" id="panel-add-job">
         <h2 class="panel-title">Add Job</h2>
 
-        <!-- Drop zone -->
-        <div class="drop-zone" id="drop-zone">
-          <div class="drop-zone-grid"></div>
-          <div class="drop-zone-content">
-            <div class="drop-icon">⬇</div>
-            <div class="drop-label">Drop HTML files here</div>
-            <div class="drop-sublabel">or</div>
-            <button class="btn btn-secondary btn-sm" id="btn-browse">Browse Files</button>
+        <!-- Source tabs -->
+        <div class="source-tabs">
+          <button class="source-tab active" id="tab-files">Files</button>
+          <button class="source-tab" id="tab-paste">Paste HTML</button>
+        </div>
+
+        <!-- Files pane -->
+        <div id="pane-files">
+          <!-- Drop zone -->
+          <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-grid"></div>
+            <div class="drop-zone-content">
+              <div class="drop-icon">⬇</div>
+              <div class="drop-label">Drop HTML files here</div>
+              <div class="drop-sublabel">or</div>
+              <button class="btn btn-secondary btn-sm" id="btn-browse">Browse Files</button>
+            </div>
+          </div>
+
+          <!-- Selected file info -->
+          <div class="selected-file" id="selected-file" hidden>
+            <div class="selected-file-header">
+              <span class="selected-filename mono" id="selected-filename"></span>
+              <button class="btn-icon" id="btn-clear-file" title="Clear">✕</button>
+            </div>
+            <!-- Single file: iframe preview -->
+            <div class="preview-container" id="single-preview">
+              <iframe class="preview-frame" id="preview-frame" sandbox="allow-scripts allow-same-origin" src="about:blank"></iframe>
+            </div>
+            <!-- Multi file: name list -->
+            <div class="file-list" id="multi-file-list" hidden></div>
           </div>
         </div>
 
-        <!-- Selected file info -->
-        <div class="selected-file" id="selected-file" hidden>
-          <div class="selected-file-header">
-            <span class="selected-filename mono" id="selected-filename"></span>
-            <button class="btn-icon" id="btn-clear-file" title="Clear">✕</button>
+        <!-- Paste HTML pane -->
+        <div id="pane-paste" hidden>
+          <div class="field">
+            <label class="field-label" for="paste-name">Animation Name (optional)</label>
+            <input class="input mono" id="paste-name" type="text" placeholder="e.g. my_animation" spellcheck="false">
           </div>
-          <!-- Single file: iframe preview -->
-          <div class="preview-container" id="single-preview">
-            <iframe class="preview-frame" id="preview-frame" sandbox="allow-scripts allow-same-origin" src="about:blank"></iframe>
+          <div class="field">
+            <label class="field-label" for="paste-html">HTML</label>
+            <textarea class="input paste-area mono" id="paste-html" placeholder="Paste full HTML animation here..." spellcheck="false"></textarea>
           </div>
-          <!-- Multi file: name list -->
-          <div class="file-list" id="multi-file-list" hidden></div>
         </div>
 
         <!-- Job settings -->
@@ -206,6 +227,14 @@
 
         <button class="btn btn-primary btn-full" id="btn-add-job" disabled>Add &amp; Export</button>
         <div class="add-hint">Starts exporting right away — add more any time, they join the running queue.</div>
+      </section>
+
+      <!-- AI Prompt -->
+      <section class="panel" id="panel-ai-prompt">
+        <h2 class="panel-title">AI Prompt</h2>
+        <p class="ai-prompt-desc">Copy a ready-made prompt for any AI to generate HTML animations that work perfectly in FrameForge. Uses your current Duration setting.</p>
+        <button class="btn btn-secondary btn-full" id="btn-copy-prompt">Copy Prompt for AI</button>
+        <div class="ai-prompt-confirm" id="ai-prompt-confirm" hidden>✓ Copied to clipboard</div>
       </section>
 
     </aside>

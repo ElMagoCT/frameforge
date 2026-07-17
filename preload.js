@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('frameforge', {
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
   // Electron 32+ deprecates file.path; webUtils.getPathForFile is the correct API
   getPathForFile: (file) => webUtils.getPathForFile(file),
+  saveHtmlToTemp: (html, name) => ipcRenderer.invoke('save-html-to-temp', { html, name }),
 
   startRecording: (jobConfig) => ipcRenderer.send('record:start', jobConfig),
   cancelRecording: () => ipcRenderer.send('record:cancel'),

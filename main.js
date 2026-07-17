@@ -100,3 +100,12 @@ ipcMain.on('record:cancel', () => {
 ipcMain.on('shell:showFile', (_event, filePath) => {
   shell.showItemInFolder(filePath);
 });
+
+ipcMain.handle('save-html-to-temp', (_event, { html, name }) => {
+  const fs = require('fs');
+  const safeName = (name || 'pasted').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+  // ff_paste_ prefix intentionally differs from frameforge_ so recorder cleanup doesn't delete it
+  const filePath = path.join(os.tmpdir(), `ff_paste_${safeName}_${Date.now()}.html`);
+  fs.writeFileSync(filePath, html, 'utf8');
+  return filePath;
+});
