@@ -28,9 +28,23 @@
     <div class="titlebar-brand">
       <span class="titlebar-icon">▶</span>
       <span class="titlebar-name">FrameForge</span>
-      <span class="titlebar-version">v1.0.6</span>
+      <span class="titlebar-version">v1.0.7</span>
     </div>
-    <div class="titlebar-status" id="global-status">Idle</div>
+    <div class="titlebar-right">
+      <div class="titlebar-status" id="global-status">Idle</div>
+      <div class="window-controls">
+        <button class="win-btn" id="win-minimize" title="Minimize" aria-label="Minimize">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5 H10"/></svg>
+        </button>
+        <button class="win-btn" id="win-maximize" title="Maximize" aria-label="Maximize">
+          <svg class="ico-maximize" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+          <svg class="ico-restore" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="2.5" width="7" height="7"/><path d="M2.5 2.5 V0.5 H9.5 V7.5 H7.5"/></svg>
+        </button>
+        <button class="win-btn win-btn--close" id="win-close" title="Close" aria-label="Close">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0 L10 10 M10 0 L0 10"/></svg>
+        </button>
+      </div>
+    </div>
   </header>
 
   <!-- ── Two-column layout ─────────────────────────────────── -->

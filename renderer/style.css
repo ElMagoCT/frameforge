@@ -90,6 +90,15 @@ html, body {
   letter-spacing: 0.05em;
 }
 
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* Pull the buttons flush to the window edge against the bar's 16px padding. */
+  margin-right: -16px;
+  height: 100%;
+}
+
 .titlebar-status {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -102,6 +111,58 @@ html, body {
 .titlebar-status.recording { color: var(--accent); }
 .titlebar-status.done { color: var(--success); }
 .titlebar-status.error { color: var(--error); }
+
+/* ── Window controls ─────────────────────────────────────────────────────── */
+
+.window-controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  /* Must opt out of the drag region or the buttons can't be clicked. */
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.win-btn svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+}
+
+/* Which glyph the middle button shows. Driven by a class rather than the
+   `hidden` attribute, which is an HTMLElement property and doesn't apply to
+   SVG elements. */
+.win-btn .ico-restore { display: none; }
+.win-btn.is-maximized .ico-maximize { display: none; }
+.win-btn.is-maximized .ico-restore { display: block; }
+
+.win-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.win-btn:active { background: var(--border); }
+
+.win-btn--close:hover {
+  background: var(--error);
+  color: #fff;
+}
+
+.win-btn--close:active { background: #b3252f; }
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 

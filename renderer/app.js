@@ -73,6 +73,10 @@ const elGlobalStatus    = $('global-status');
 // ── Init ──────────────────────────────────────────────────────────────────
 
 async function init() {
+  // Wired first, before anything that can await or throw: the window is
+  // frameless, so if init ever stalled there'd be no other way to close it.
+  wireWindowControls();
+
   try {
     outputFolder = await window.frameforge.getDefaultOutputFolder();
   } catch (_) {
@@ -85,6 +89,29 @@ async function init() {
   renderOutputFolder();
   wireEvents();
   wireIPC();
+}
+
+// ── Window controls ───────────────────────────────────────────────────────
+
+function setMaximizedIcon(isMax) {
+  const btn = $('win-maximize');
+  if (!btn) return;
+  btn.classList.toggle('is-maximized', !!isMax);
+  btn.title = isMax ? 'Restore' : 'Maximize';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+function wireWindowControls() {
+  const ff = window.frameforge;
+  // Guard so the renderer still loads if opened outside Electron (no preload).
+  if (!ff || typeof ff.minimizeWindow !== 'function') return;
+
+  $('win-minimize').addEventListener('click', () => ff.minimizeWindow());
+  $('win-maximize').addEventListener('click', () => ff.toggleMaximizeWindow());
+  $('win-close').addEventListener('click', () => ff.closeWindow());
+
+  ff.onWindowMaximized(setMaximizedIcon);
+  ff.isWindowMaximized().then(setMaximizedIcon).catch(() => {});
 }
 
 // ── Output folder ─────────────────────────────────────────────────────────

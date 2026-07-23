@@ -3,6 +3,14 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('frameforge', {
+  // Window controls — the window is frameless, so these drive the custom
+  // minimize / maximize / close buttons in the title bar.
+  minimizeWindow: () => ipcRenderer.send('window:minimize'),
+  toggleMaximizeWindow: () => ipcRenderer.send('window:toggleMaximize'),
+  closeWindow: () => ipcRenderer.send('window:close'),
+  isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onWindowMaximized: (cb) => ipcRenderer.on('window:maximized', (_e, state) => cb(state)),
+
   getSystemInfo: () => ipcRenderer.invoke('get:systemInfo'),
   getDefaultOutputFolder: () => ipcRenderer.invoke('get:defaultOutputFolder'),
   openFile: () => ipcRenderer.invoke('dialog:openFile'),

@@ -20,6 +20,10 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#0e0e12',
     title: 'FrameForge',
+    // The renderer draws its own title bar (see .titlebar, which already
+    // declares -webkit-app-region: drag), so the OS frame is turned off and
+    // the window buttons live in that bar instead.
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -28,6 +32,16 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // Keep the maximize/restore button's icon in sync however the state changed —
+  // our button, a double-click on the drag region, or an OS snap gesture.
+  const sendMaxState = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximized', mainWindow.isMaximized());
+    }
+  };
+  mainWindow.on('maximize', sendMaxState);
+  mainWindow.on('unmaximize', sendMaxState);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -47,6 +61,27 @@ app.on('window-all-closed', () => {
 });
 
 // ─── IPC Handlers ────────────────────────────────────────────────────────────
+
+// ── Window controls (frameless window — no OS buttons to fall back on) ──────
+
+const senderWindow = (event) => BrowserWindow.fromWebContents(event.sender);
+
+ipcMain.on('window:minimize', (event) => {
+  senderWindow(event)?.minimize();
+});
+
+ipcMain.on('window:toggleMaximize', (event) => {
+  const win = senderWindow(event);
+  if (!win) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+});
+
+ipcMain.on('window:close', (event) => {
+  senderWindow(event)?.close();
+});
+
+ipcMain.handle('window:isMaximized', (event) => senderWindow(event)?.isMaximized() ?? false);
 
 ipcMain.handle('get:systemInfo', () => ({
   cpus: os.cpus().length,
