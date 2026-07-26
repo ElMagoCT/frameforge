@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 
 let mainWindow = null;
 let recorder = null;
@@ -89,8 +90,22 @@ ipcMain.handle('get:systemInfo', () => ({
   totalMemGB: os.totalmem() / (1024 ** 3),
 }));
 
+// The renderer shows this in the title bar so the version lives in exactly one
+// place — see the VERSIONING note at the top of this file.
+ipcMain.handle('get:appVersion', () => app.getVersion());
+
 ipcMain.handle('get:defaultOutputFolder', () => {
   return path.join(app.getPath('desktop'), 'FrameForge_Output');
+});
+
+// A remembered folder can be deleted or live on a drive that isn't mounted;
+// the renderer checks before restoring it so exports don't fail at the last step.
+ipcMain.handle('fs:folderExists', (_event, folder) => {
+  try {
+    return !!folder && fs.statSync(folder).isDirectory();
+  } catch (_) {
+    return false;
+  }
 });
 
 ipcMain.handle('dialog:openFile', async () => {
@@ -103,10 +118,13 @@ ipcMain.handle('dialog:openFile', async () => {
   return result.canceled || result.filePaths.length === 0 ? null : result.filePaths;
 });
 
-ipcMain.handle('dialog:openFolder', async () => {
+ipcMain.handle('dialog:openFolder', async (_event, startIn) => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Select Output Folder',
+    // Reopening where they last chose beats starting at the home directory
+    // every time, which is what defaultPath omitted does.
+    defaultPath: startIn || undefined,
     properties: ['openDirectory', 'createDirectory'],
   });
   return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
@@ -134,6 +152,14 @@ ipcMain.on('record:cancel', () => {
 
 ipcMain.on('shell:showFile', (_event, filePath) => {
   shell.showItemInFolder(filePath);
+});
+
+// The output folder usually doesn't exist until the first export writes to it,
+// so create it rather than failing to open a folder the user just picked.
+ipcMain.on('shell:openFolder', (_event, folder) => {
+  if (!folder) return;
+  try { fs.mkdirSync(folder, { recursive: true }); } catch (_) {}
+  shell.openPath(folder);
 });
 
 ipcMain.handle('save-html-to-temp', (_event, { html, name }) => {

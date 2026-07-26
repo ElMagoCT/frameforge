@@ -12,9 +12,12 @@ contextBridge.exposeInMainWorld('frameforge', {
   onWindowMaximized: (cb) => ipcRenderer.on('window:maximized', (_e, state) => cb(state)),
 
   getSystemInfo: () => ipcRenderer.invoke('get:systemInfo'),
+  getAppVersion: () => ipcRenderer.invoke('get:appVersion'),
   getDefaultOutputFolder: () => ipcRenderer.invoke('get:defaultOutputFolder'),
+  folderExists: (folder) => ipcRenderer.invoke('fs:folderExists', folder),
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
-  openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  openFolder: (startIn) => ipcRenderer.invoke('dialog:openFolder', startIn),
+  openFolderInExplorer: (folder) => ipcRenderer.send('shell:openFolder', folder),
   // Electron 32+ deprecates file.path; webUtils.getPathForFile is the correct API
   getPathForFile: (file) => webUtils.getPathForFile(file),
   saveHtmlToTemp: (html, name) => ipcRenderer.invoke('save-html-to-temp', { html, name }),

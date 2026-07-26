@@ -28,7 +28,9 @@
     <div class="titlebar-brand">
       <span class="titlebar-icon">▶</span>
       <span class="titlebar-name">FrameForge</span>
-      <span class="titlebar-version">v1.1.0</span>
+      <!-- Filled in from package.json at boot — do not hard-code a version
+           here. See the VERSIONING note at the top of main.js. -->
+      <span class="titlebar-version" id="app-version">—</span>
     </div>
     <div class="titlebar-right">
       <div class="titlebar-status" id="global-status">Idle</div>
@@ -61,8 +63,10 @@
           <label class="field-label">Output Folder</label>
           <div class="folder-row">
             <span class="folder-path mono" id="output-folder-display">—</span>
+            <button class="btn btn-secondary btn-sm" id="btn-open-folder" title="Open this folder in Explorer">Open</button>
             <button class="btn btn-secondary btn-sm" id="btn-change-folder">Change</button>
           </div>
+          <div class="field-hint">Remembered between sessions. Every job in the queue writes here.</div>
         </div>
 
         <div class="field">

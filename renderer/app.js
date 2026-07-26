@@ -35,6 +35,27 @@ let systemInfo = { cpus: 4, freeMemGB: 8 }; // sensible defaults until we hear f
 // Per-job IPC callbacks — keyed by jobId, supports parallel jobs
 const jobCallbacks = new Map();
 
+// ── Persisted settings ────────────────────────────────────────────────────
+//
+// The output folder is something you pick once and want to stay picked, so it
+// survives a restart. Everything else is per-job and deliberately resets.
+
+const STORE_KEY = 'frameforge.settings.v1';
+
+function loadSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(STORE_KEY)) || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveSettings(patch) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({ ...loadSettings(), ...patch }));
+  } catch (_) { /* private mode / quota — settings just won't persist */ }
+}
+
 // ── DOM refs ──────────────────────────────────────────────────────────────
 
 const $ = (id) => document.getElementById(id);
@@ -56,6 +77,7 @@ const elMultiFileList   = $('multi-file-list');
 const elAddJobBtn       = $('btn-add-job');
 const elOutputFolder    = $('output-folder-display');
 const elChangeFolder    = $('btn-change-folder');
+const elOpenFolder      = $('btn-open-folder');
 const elOutputFormat    = $('output-format');
 const elFilenamePrefix  = $('filename-prefix');
 const elFormatNote      = $('format-note');
@@ -77,14 +99,30 @@ async function init() {
   // frameless, so if init ever stalled there'd be no other way to close it.
   wireWindowControls();
 
-  try {
-    outputFolder = await window.frameforge.getDefaultOutputFolder();
-  } catch (_) {
-    outputFolder = '';
+  const stored = loadSettings();
+
+  // Independent of each other, so they go out together rather than in series.
+  const [version, sysInfo, defaultFolder, storedFolderOk] = await Promise.all([
+    window.frameforge.getAppVersion().catch(() => null),
+    window.frameforge.getSystemInfo().catch(() => null),
+    window.frameforge.getDefaultOutputFolder().catch(() => ''),
+    stored.outputFolder
+      ? window.frameforge.folderExists(stored.outputFolder).catch(() => false)
+      : Promise.resolve(false),
+  ]);
+
+  if (version) {
+    const el = $('app-version');
+    if (el) el.textContent = 'v' + version;
   }
-  try {
-    systemInfo = await window.frameforge.getSystemInfo();
-  } catch (_) { /* use defaults */ }
+  if (sysInfo) systemInfo = sysInfo;
+
+  // A remembered folder that's been deleted or lives on an unplugged drive
+  // would fail at the very end of an export; fall back before that happens.
+  if (stored.outputFolder && !storedFolderOk) {
+    appendLog(`Saved output folder is gone (${stored.outputFolder}) — using the default.`, 'warn');
+  }
+  outputFolder = storedFolderOk ? stored.outputFolder : (defaultFolder || '');
 
   renderOutputFolder();
   wireEvents();
@@ -119,6 +157,7 @@ function wireWindowControls() {
 function renderOutputFolder() {
   elOutputFolder.textContent = outputFolder || '—';
   elOutputFolder.title = outputFolder;
+  elOpenFolder.disabled = !outputFolder;
 }
 
 // ── Adaptive concurrency ──────────────────────────────────────────────────
@@ -907,8 +946,16 @@ function wireEvents() {
   elCancelBtn.addEventListener('click', cancelExport);
 
   elChangeFolder.addEventListener('click', async () => {
-    const folder = await window.frameforge.openFolder();
-    if (folder) { outputFolder = folder; renderOutputFolder(); }
+    const folder = await window.frameforge.openFolder(outputFolder);
+    if (!folder) return;
+    outputFolder = folder;
+    saveSettings({ outputFolder: folder });
+    renderOutputFolder();
+    appendLog(`Output folder set to ${folder}`, 'accent');
+  });
+
+  elOpenFolder.addEventListener('click', () => {
+    if (outputFolder) window.frameforge.openFolderInExplorer(outputFolder);
   });
 
   elClearLog.addEventListener('click', () => { elLogBody.innerHTML = ''; });
