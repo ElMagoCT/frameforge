@@ -321,7 +321,7 @@ input[type='number'].input::-webkit-outer-spin-button {
 
 .radio-label:has(input:checked) .radio-text { color: var(--accent); }
 
-/* ── Checkbox (single toggle, full width) ──────────────────────────────── */
+/* ── Checkbox (single toggle, full width) ────────────────────────────────── */
 
 .checkbox-label {
   display: flex;
