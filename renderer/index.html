@@ -107,6 +107,30 @@
         </div>
       </section>
 
+      <!-- Performance -->
+      <section class="panel" id="panel-performance">
+        <h2 class="panel-title">Performance</h2>
+
+        <div class="field">
+          <div class="slider-head">
+            <label class="field-label" for="concurrency-slider">Parallel Renders</label>
+            <span class="slider-value mono" id="concurrency-value">—</span>
+          </div>
+          <input class="slider" id="concurrency-slider" type="range" min="1" max="8" value="2" step="1">
+          <div class="slider-scale mono">
+            <span>1</span>
+            <span id="concurrency-max-label">8</span>
+          </div>
+          <label class="checkbox-label" title="Picks a number from your CPU count, free RAM and the heaviest resolution in the queue.">
+            <input type="checkbox" id="concurrency-auto" checked>
+            <span class="radio-text">Auto <span class="hint-note" id="concurrency-auto-note"></span></span>
+          </label>
+          <div class="field-hint" id="concurrency-hint">
+            Each render runs its own Chromium — roughly 1&nbsp;GB and one core apiece.
+          </div>
+        </div>
+      </section>
+
       <!-- Add Job -->
       <section class="panel" id="panel-add-job">
         <h2 class="panel-title">Add Job</h2>

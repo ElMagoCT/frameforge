@@ -32,13 +32,19 @@ let outputFolder = '';
 let jobIdCounter = 0;
 let systemInfo = { cpus: 4, freeMemGB: 8 }; // sensible defaults until we hear from main
 
+// How many renders run at once. Auto sizes it from the machine and the queue;
+// turning it off hands the number to the slider.
+let concurrencyAuto = true;
+let manualConcurrency = 2;
+
 // Per-job IPC callbacks — keyed by jobId, supports parallel jobs
 const jobCallbacks = new Map();
 
 // ── Persisted settings ────────────────────────────────────────────────────
 //
-// The output folder is something you pick once and want to stay picked, so it
-// survives a restart. Everything else is per-job and deliberately resets.
+// The output folder and the parallel-render setting are things you pick once
+// and want to stay picked, so they survive a restart. Everything else is
+// per-job and deliberately resets.
 
 const STORE_KEY = 'frameforge.settings.v1';
 
@@ -78,6 +84,12 @@ const elAddJobBtn       = $('btn-add-job');
 const elOutputFolder    = $('output-folder-display');
 const elChangeFolder    = $('btn-change-folder');
 const elOpenFolder      = $('btn-open-folder');
+const elConcSlider      = $('concurrency-slider');
+const elConcValue       = $('concurrency-value');
+const elConcAuto        = $('concurrency-auto');
+const elConcAutoNote    = $('concurrency-auto-note');
+const elConcHint        = $('concurrency-hint');
+const elConcMaxLabel    = $('concurrency-max-label');
 const elOutputFormat    = $('output-format');
 const elFilenamePrefix  = $('filename-prefix');
 const elFormatNote      = $('format-note');
@@ -124,7 +136,11 @@ async function init() {
   }
   outputFolder = storedFolderOk ? stored.outputFolder : (defaultFolder || '');
 
+  if (typeof stored.manualConcurrency === 'number') manualConcurrency = stored.manualConcurrency;
+  if (typeof stored.concurrencyAuto === 'boolean') concurrencyAuto = stored.concurrencyAuto;
+
   renderOutputFolder();
+  initConcurrencyControl();
   wireEvents();
   wireIPC();
 }
@@ -160,9 +176,16 @@ function renderOutputFolder() {
   elOpenFolder.disabled = !outputFolder;
 }
 
-// ── Adaptive concurrency ──────────────────────────────────────────────────
+// ── Concurrency ───────────────────────────────────────────────────────────
+//
+// Auto estimates what the machine can sustain; the slider overrides it. The
+// number is only ever a *ceiling* — the worker pool never spawns more workers
+// than there are jobs waiting, so setting 8 with two jobs queued still runs two.
 
-function calcAdaptiveConcurrency(readyJobs) {
+// Capacity estimate for jobs of the given weight. Deliberately does not clamp
+// to the job count: that clamp belongs to the spawn logic, and folding it in
+// here would make the slider read "1" whenever the queue was empty.
+function calcAdaptiveConcurrency(sample) {
   const { cpus, freeMemGB } = systemInfo;
 
   // Start: half of logical cores, leaving headroom for Electron + OS
@@ -172,22 +195,75 @@ function calcAdaptiveConcurrency(readyJobs) {
   n = Math.min(n, Math.max(1, Math.floor(freeMemGB)));
 
   // Cap by resolution of the heaviest job in the batch
-  if (readyJobs.length > 0) {
-    const maxPx = Math.max(...readyJobs.map((j) => j.width * j.height));
+  if (sample.length > 0) {
+    const maxPx = Math.max(...sample.map((j) => j.width * j.height));
     if      (maxPx >= 3840 * 2160) n = Math.min(n, 1); // 4K   → 1 slot
     else if (maxPx >= 2560 * 1440) n = Math.min(n, 2); // 2K   → ≤ 2
     else if (maxPx >= 1920 * 1080) n = Math.min(n, 3); // 1080p → ≤ 3
     // HD and below: no extra cap
   }
 
-  // Never exceed the number of jobs we actually have
-  return Math.max(1, Math.min(n, readyJobs.length));
+  return Math.max(1, n);
 }
 
 // Jobs that are either waiting or in flight — the pool that concurrency is
 // sized against, so a job added mid-export is counted alongside running ones.
 function activePool() {
   return jobs.filter((j) => j.status === 'ready' || j.status === 'recording');
+}
+
+// With an empty queue there's nothing to measure, so auto previews what it
+// would pick for the resolution currently selected in the form.
+function concurrencySample() {
+  const pool = activePool();
+  if (pool.length > 0) return pool;
+  const res = RESOLUTIONS[$('job-resolution').value] || RESOLUTIONS['2k'];
+  return [{ width: res.width, height: res.height }];
+}
+
+function autoConcurrency() {
+  return calcAdaptiveConcurrency(concurrencySample());
+}
+
+function targetConcurrency() {
+  return concurrencyAuto ? autoConcurrency() : manualConcurrency;
+}
+
+function concurrencyMax() {
+  // Above the core count you're only adding context switches, so that's the
+  // ceiling — with a floor of 4 so a dual-core machine still gets a usable range.
+  return Math.max(4, systemInfo.cpus);
+}
+
+function initConcurrencyControl() {
+  const max = concurrencyMax();
+  elConcSlider.max = String(max);
+  elConcMaxLabel.textContent = String(max);
+  manualConcurrency = Math.max(1, Math.min(max, manualConcurrency));
+  elConcAuto.checked = concurrencyAuto;
+  renderConcurrencyControl();
+}
+
+function renderConcurrencyControl() {
+  const auto = autoConcurrency();
+  const n = targetConcurrency();
+
+  elConcSlider.disabled = concurrencyAuto;
+  elConcSlider.value = String(n);
+  elConcValue.textContent = `${n}×`;
+  elConcAutoNote.textContent = concurrencyAuto
+    ? `— ${systemInfo.cpus} cores, ${systemInfo.freeMemGB.toFixed(1)} GB free`
+    : '— off, using the slider';
+
+  // Going past the estimate isn't forbidden — on a machine with plenty of RAM
+  // it's often a win — but it's worth saying which side of the line you're on.
+  const over = !concurrencyAuto && n > auto;
+  elConcHint.classList.toggle('field-hint--warn', over);
+  elConcHint.innerHTML = over
+    ? `⚠ Above the ${auto}× estimate for this queue — faster if you have the RAM, thrashy if you don't.`
+    : 'Each render runs its own Chromium — roughly 1&nbsp;GB and one core apiece.';
+
+  refreshConcurrencyBadge();
 }
 
 function refreshConcurrencyBadge() {
@@ -197,8 +273,9 @@ function refreshConcurrencyBadge() {
     elConcurrencyBadge.textContent = '';
     return;
   }
-  const n = calcAdaptiveConcurrency(pool);
-  elConcurrencyBadge.textContent = isExporting ? `· ${n} parallel` : `· Auto: ${n} parallel`;
+  const n = Math.min(targetConcurrency(), pool.length);
+  const label = concurrencyAuto && !isExporting ? `Auto: ${n}` : String(n);
+  elConcurrencyBadge.textContent = `· ${label} parallel`;
 }
 
 // ── Output filename ───────────────────────────────────────────────────────
@@ -505,7 +582,7 @@ function updateQueueUI() {
   elExportAll.disabled = readyCount === 0;
   elClearAll.disabled = count === 0;
   elEmptyState.style.display = count === 0 ? '' : 'none';
-  refreshConcurrencyBadge();
+  renderConcurrencyControl();
 }
 
 // ── Job card rendering ────────────────────────────────────────────────────
@@ -682,7 +759,7 @@ function startOrTopUpExport() {
     );
   }
 
-  const target = calcAdaptiveConcurrency(activePool());
+  const target = targetConcurrency();
   const spawn = Math.min(target - activeWorkers, pending);
   for (let i = 0; i < spawn; i++) {
     exportWorker().catch((err) => appendLog('Worker error: ' + err.message, 'error'));
@@ -958,6 +1035,21 @@ function wireEvents() {
     if (outputFolder) window.frameforge.openFolderInExplorer(outputFolder);
   });
 
+  elConcAuto.addEventListener('change', () => {
+    concurrencyAuto = elConcAuto.checked;
+    // Handing control over mid-session should start from whatever auto had
+    // settled on, not from a stale slider position.
+    if (!concurrencyAuto) manualConcurrency = autoConcurrency();
+    saveSettings({ concurrencyAuto, manualConcurrency });
+    renderConcurrencyControl();
+  });
+
+  elConcSlider.addEventListener('input', () => {
+    manualConcurrency = parseInt(elConcSlider.value, 10) || 1;
+    renderConcurrencyControl();
+  });
+  elConcSlider.addEventListener('change', () => saveSettings({ manualConcurrency }));
+
   elClearLog.addEventListener('click', () => { elLogBody.innerHTML = ''; });
 
   $('btn-copy-prompt').addEventListener('click', () => {
@@ -975,7 +1067,9 @@ function wireEvents() {
     r.addEventListener('change', checkTransparentFormatNote)
   );
 
-  $('job-resolution').addEventListener('change', () => { applyAutoZoom(); refreshConcurrencyBadge(); });
+  // Resolution feeds the auto estimate, so the parallel-render readout has to
+  // move with it — 4K drops to a single slot where HD wouldn't.
+  $('job-resolution').addEventListener('change', () => { applyAutoZoom(); renderConcurrencyControl(); });
   $('job-zoom-auto').addEventListener('change', applyAutoZoom);
 
   // Delegated so every control in the sidebar — prefix, format, the filename
