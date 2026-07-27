@@ -221,16 +221,9 @@
               <input class="input mono" id="job-zoom" type="number" value="100" min="10" max="500" step="10">
             </div>
             <div class="field">
-              <label class="field-label" for="job-speed">Playback Speed</label>
-              <select class="input" id="job-speed">
-                <option value="0.25">0.25× slow-mo</option>
-                <option value="0.5">0.5× slow-mo</option>
-                <option value="0.75">0.75×</option>
-                <option value="1" selected>1× normal</option>
-                <option value="1.5">1.5×</option>
-                <option value="2">2× fast</option>
-                <option value="4">4× fast</option>
-              </select>
+              <label class="field-label" for="job-speed">Playback Speed (×)</label>
+              <input class="input mono" id="job-speed" type="number" value="1" min="0.05" max="20" step="0.05"
+                     title="Below 1 is slow motion, above 1 is fast. Any value from 0.05 to 20 — 0.4 and 1.75 are as valid as 2.">
             </div>
           </div>
 

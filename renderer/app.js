@@ -297,6 +297,18 @@ const FILENAME_PARTS = [
   { id: 'fn-bg',    build: (s) => s.background },
 ];
 
+// Playback speed is a free-text number rather than a preset list, so it needs
+// its own guard: 0 or a negative would make FFmpeg's input framerate nonsense,
+// and an empty box while you're mid-typing shouldn't blow up the preview.
+const SPEED_MIN = 0.05;
+const SPEED_MAX = 20;
+
+function readSpeed() {
+  const raw = parseFloat($('job-speed').value);
+  if (!isFinite(raw) || raw <= 0) return 1;
+  return Math.max(SPEED_MIN, Math.min(SPEED_MAX, raw));
+}
+
 function sanitizeFilename(name) {
   return name
     .replace(/[\\/:*?"<>|]/g, '-')  // characters Windows rejects outright
@@ -339,7 +351,7 @@ function currentNameSettings() {
     height: resolution.height,
     fps: parseInt($('job-fps').value, 10),
     zoom: Math.max(10, Math.min(500, parseInt($('job-zoom').value, 10) || 100)),
-    speed: parseFloat($('job-speed').value) || 1,
+    speed: readSpeed(),
     duration: parseFloat($('job-duration').value),
     background: document.querySelector('input[name="bg"]:checked')?.value || 'black',
     outputFormat: elOutputFormat.value,
@@ -455,7 +467,7 @@ function buildJob(filePath, filenameOverride) {
   const duration   = parseFloat($('job-duration').value);
   const startDelay = parseFloat($('job-delay').value);
   const zoom       = Math.max(10, Math.min(500, parseInt($('job-zoom').value, 10) || 100));
-  const speed      = parseFloat($('job-speed').value) || 1;
+  const speed      = readSpeed();
   const background = document.querySelector('input[name="bg"]:checked')?.value || 'black';
   const deterministicJS = $('job-deterministic-js')?.checked !== false;
   const outputFormat = elOutputFormat.value;
@@ -1071,6 +1083,13 @@ function wireEvents() {
   // move with it — 4K drops to a single slot where HD wouldn't.
   $('job-resolution').addEventListener('change', () => { applyAutoZoom(); renderConcurrencyControl(); });
   $('job-zoom-auto').addEventListener('change', applyAutoZoom);
+
+  // Snap a typed speed back into range on blur rather than while typing, so
+  // "0." on the way to "0.5" isn't rewritten under the cursor.
+  $('job-speed').addEventListener('change', () => {
+    $('job-speed').value = String(readSpeed());
+    updateFilenamePreview();
+  });
 
   // Delegated so every control in the sidebar — prefix, format, the filename
   // checkboxes, and all the job settings — refreshes the preview.
