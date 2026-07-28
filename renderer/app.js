@@ -833,6 +833,9 @@ function runJob(job) {
       deterministicJS: job.deterministicJS,
       outputFormat: job.outputFormat,
       outputPath:   job.outputPath,
+      // Lets the recorder split FFmpeg's thread budget across simultaneous jobs
+      // instead of every encoder claiming every core.
+      concurrency:  Math.max(1, targetConcurrency()),
     });
   });
 }
