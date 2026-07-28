@@ -2,6 +2,11 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* The browser's own [hidden] rule is display:none, but any author rule that
+   sets display beats it — .btn declares inline-flex, so the Cancel button sat
+   next to Export All the whole time no matter what the JS set .hidden to. */
+[hidden] { display: none !important; }
+
 :root {
   --bg:           #0e0e12;
   --surface:      #16161c;

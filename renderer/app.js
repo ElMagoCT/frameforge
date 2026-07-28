@@ -567,8 +567,8 @@ function removeJob(jobId) {
   const job = jobs.find((j) => j.jobId === jobId);
   if (!job || job.status === 'recording') return;
   jobs = jobs.filter((j) => j.jobId !== jobId);
-  const card = document.querySelector(`.job-card[data-id="${jobId}"]`);
-  if (card) card.remove();
+  pendingProgress.delete(job);
+  job.el?.card.remove();
   updateQueueUI();
 }
 
@@ -576,8 +576,8 @@ function clearAll() {
   const keep = jobs.filter((j) => j.status === 'recording');
   for (const job of jobs) {
     if (job.status === 'recording') continue;
-    const card = document.querySelector(`.job-card[data-id="${job.jobId}"]`);
-    if (card) card.remove();
+    pendingProgress.delete(job);
+    job.el?.card.remove();
   }
   jobs = keep;
   if (jobs.length === 0) {
@@ -622,9 +622,23 @@ function renderJobCard(job) {
     </div>
   `;
 
-  card.querySelector('.btn-remove-job').addEventListener('click', () => removeJob(job.jobId));
-  card.querySelector('.btn-redo-job').addEventListener('click', () => redoJob(job.jobId));
-  card.querySelector('.btn-show-folder').addEventListener('click', () => {
+  // Held on the job rather than looked up per update. Progress arrives once per
+  // captured frame, so with several jobs in flight this was thousands of
+  // querySelector walks over the whole list during an export.
+  job.el = {
+    card,
+    badge:     card.querySelector('.job-badge'),
+    progress:  card.querySelector('.job-progress'),
+    fill:      card.querySelector('.job-progress-fill'),
+    error:     card.querySelector('.job-error-msg'),
+    showBtn:   card.querySelector('.btn-show-folder'),
+    redoBtn:   card.querySelector('.btn-redo-job'),
+    removeBtn: card.querySelector('.btn-remove-job'),
+  };
+
+  job.el.removeBtn.addEventListener('click', () => removeJob(job.jobId));
+  job.el.redoBtn.addEventListener('click', () => redoJob(job.jobId));
+  job.el.showBtn.addEventListener('click', () => {
     if (job.outputFilePath) window.frameforge.showFile(job.outputFilePath);
   });
 
@@ -633,19 +647,13 @@ function renderJobCard(job) {
 }
 
 function updateJobCard(job) {
-  const card = document.querySelector(`.job-card[data-id="${job.jobId}"]`);
-  if (!card) return;
+  if (!job.el) return;
+  const { card, badge, progress: progressEl, fill: fillEl, error: errorEl,
+          showBtn, redoBtn, removeBtn } = job.el;
 
   card.className = `job-card status-${job.status}`;
-  card.querySelector('.job-badge').className = `job-badge badge-${job.status}`;
-  card.querySelector('.job-badge').textContent = job.status.toUpperCase();
-
-  const progressEl = card.querySelector('.job-progress');
-  const fillEl     = card.querySelector('.job-progress-fill');
-  const errorEl    = card.querySelector('.job-error-msg');
-  const showBtn    = card.querySelector('.btn-show-folder');
-  const redoBtn    = card.querySelector('.btn-redo-job');
-  const removeBtn  = card.querySelector('.btn-remove-job');
+  badge.className = `job-badge badge-${job.status}`;
+  badge.textContent = job.status.toUpperCase();
 
   // Redo is offered once a job has stopped running — that's when you'd know you
   // want it back with different settings.
@@ -718,14 +726,29 @@ function redoJob(jobId) {
   appendLog(`Loaded "${job.filename}" back into Add Job — adjust settings, then Enter or Add & Export.`, 'accent');
 }
 
-function setJobProgress(jobId, pct) {
-  const job = jobs.find((j) => j.jobId === jobId);
-  if (!job) return;
+// Progress events land once per captured frame — 60 fps × however many jobs are
+// running. Writing to the DOM on each one forces far more style work than the
+// display is capable of showing, so the value is recorded immediately and the
+// bars are painted once per animation frame.
+const pendingProgress = new Set();
+let progressFlushQueued = false;
+
+function flushProgress() {
+  progressFlushQueued = false;
+  for (const job of pendingProgress) {
+    if (!job.el) continue;
+    job.el.fill.style.width = job.progress + '%';
+    job.el.progress.hidden = false;
+  }
+  pendingProgress.clear();
+}
+
+function setJobProgress(job, pct) {
   job.progress = pct;
-  const card = document.querySelector(`.job-card[data-id="${jobId}"]`);
-  if (!card) return;
-  card.querySelector('.job-progress-fill').style.width = pct + '%';
-  card.querySelector('.job-progress').hidden = false;
+  pendingProgress.add(job);
+  if (progressFlushQueued) return;
+  progressFlushQueued = true;
+  requestAnimationFrame(flushProgress);
 }
 
 // ── Export queue (live parallel pool) ─────────────────────────────────────
@@ -800,8 +823,9 @@ function runJob(job) {
 
     // Register callbacks; wireIPC() routes incoming events here by jobId
     jobCallbacks.set(job.jobId, {
-      onProgress: (data) => setJobProgress(job.jobId, data.progress),
+      onProgress: (data) => setJobProgress(job, data.progress),
       onDone: (data) => {
+        pendingProgress.delete(job);
         job.status = 'done';
         job.progress = 100;
         job.outputFilePath = data.outputPath;
@@ -810,6 +834,7 @@ function runJob(job) {
         resolve();
       },
       onError: (data) => {
+        pendingProgress.delete(job);
         job.status = 'error';
         job.errorMsg = data.message;
         updateJobCard(job);
@@ -863,12 +888,19 @@ function wireIPC() {
 
 // ── Log ───────────────────────────────────────────────────────────────────
 
+// A long batch can log thousands of lines; without a cap they all stay in the
+// DOM being laid out forever, for scrollback nobody reads.
+const MAX_LOG_LINES = 500;
+
 function appendLog(msg, type) {
   const line = document.createElement('div');
   line.className = 'log-line' + (type ? ` log-line--${type}` : '');
   const ts = new Date().toTimeString().slice(0, 8);
   line.textContent = `[${ts}] ${msg}`;
   elLogBody.appendChild(line);
+  while (elLogBody.childElementCount > MAX_LOG_LINES) {
+    elLogBody.removeChild(elLogBody.firstElementChild);
+  }
   elLogBody.scrollTop = elLogBody.scrollHeight;
 }
 
