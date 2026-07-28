@@ -2,6 +2,38 @@
 
 All notable changes to FrameForge.
 
+> Bump `package.json` and add an entry here on every edit — see `CLAUDE.md`.
+
+## [1.2.0] — 2026-07-26
+
+Exports are roughly a third faster, 4K stopped crashing, and how many renders run at once is now yours to set.
+
+### Added
+
+- **Parallel Renders slider** — set how many exports run simultaneously, 1 up to your core count. Auto still sizes it from cores, free RAM and the heaviest resolution in the queue; untick it to take the number yourself. Pushing past the estimate is allowed and says so.
+- **Output folder is remembered** between sessions, gets an **Open** button, and the Change dialog reopens where you last were. A saved folder that's been deleted or lives on an unplugged drive falls back to the default with a warning instead of failing at the end of an export.
+- `CLAUDE.md` with the versioning rule and notes on the capture path.
+
+### Changed
+
+- **Playback speed is a text box, not a dropdown.** Any value from 0.05× to 20× — 0.4× and 1.75× are as valid as 2×. Out-of-range and empty entries snap back on blur.
+- **Frames are piped straight into FFmpeg** instead of being written to a temp folder as a PNG sequence and read back. Encoding now overlaps capture rather than following it, and a 4K job no longer moves gigabytes through the disk. Exports come out around 30% faster at 1080p.
+- **Chromium instances are pooled and reused** across jobs instead of being launched and thrown away for each one.
+- Capture talks to Chrome directly instead of going through Puppeteer's wrapper — one message per frame seek, one per screenshot, with fast-path PNG compression.
+- x264 moved from `-preset slow` to `-preset fast`, and VP9 gained row multithreading and tile columns. Each FFmpeg gets a share of the cores rather than all of them, so parallel jobs stop fighting each other.
+- Chromium launches with background throttling, extensions and update/telemetry services off — a headless page is backgrounded the entire time it renders, which was slowing every frame.
+- The version in the title bar is read from `package.json` rather than typed into the HTML.
+- The log stops at 500 lines instead of growing forever.
+
+### Fixed
+
+- **4K exports failed outright.** Every 4K job on a 16-core test machine died partway through with `Protocol error (Page.captureScreenshot): Target closed`. 4K now completes reliably.
+- **A dropped renderer no longer loses the job.** Chromium still occasionally drops a target mid-capture when several instances are software-rendering at once. That used to end the export; now the job is replayed once from the first frame with a fresh browser, and the failed browser is never returned to the pool. Across 32 jobs at eight-way concurrency this turned three crashes into three completed exports.
+- **The Cancel button was always on screen and Export All never went away** during an export. `.btn` declares `display: inline-flex`, which overrides the browser's rule for the `hidden` attribute, so neither button could ever hide itself.
+- Progress bars are painted once per animation frame rather than once per captured frame, and job cards keep their own element references instead of re-querying the whole list on every update.
+- A cancelled or failed export no longer leaves a half-written video sitting in the output folder.
+- A page that clobbers `window.__ff` now logs that frame seeking failed instead of silently exporting a frozen animation.
+
 ## [1.1.0] — 2026-07-26
 
 The export path from "I have an animation" to "I have a video" in one click, and a capture engine that renders every animation system correctly instead of most of them.

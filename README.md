@@ -14,8 +14,8 @@ Built for motion designers, developers, and YouTube creators who build animation
 - **MP4, WebM, and ProRes 4444** — standard delivery or transparent alpha channel for compositing
 - **Resolution up to 4K** — HD, 1080p, 1440p, and 4K output
 - **Zoom control** — scale content inside the frame without changing output resolution
-- **Playback speed** — slow motion down to 0.25× or speed up to 4× at encode time, no re-capture needed
-- **Adaptive parallel export** — automatically detects your CPU cores and free RAM to run as many jobs simultaneously as your machine can handle
+- **Playback speed** — any rate from 0.05× to 20×, typed in directly, applied at encode time with no re-capture needed
+- **Parallel export you control** — a slider sets how many renders run at once; leave it on Auto and it sizes itself from your CPU cores, free RAM and the heaviest resolution in the queue
 - **Zero system dependencies** — FFmpeg and Chromium are bundled; nothing to install separately
 - **No terminal required** — double-click the desktop shortcut and it just opens
 
@@ -23,7 +23,7 @@ Built for motion designers, developers, and YouTube creators who build animation
 
 ## How it works
 
-FrameForge uses **Puppeteer** to open your HTML file in a headless Chromium browser at the exact resolution you specify, captures frames at your chosen framerate, then pipes them through **FFmpeg** to encode the final video. Everything stays local.
+FrameForge uses **Puppeteer** to open your HTML file in a headless Chromium browser at the exact resolution you specify, captures frames at your chosen framerate, and streams them straight into **FFmpeg**'s stdin as they're taken. Nothing is staged on disk, and encoding runs alongside capture rather than waiting for it to finish. Everything stays local.
 
 Capture is **deterministic**, not a real-time screen recording. Before the first frame, FrameForge pauses every clock in the page; for each frame it seeks them all to that frame's exact timestamp. A capture that takes four minutes of wall time still produces a perfectly timed five-second video.
 
@@ -67,7 +67,7 @@ After installing, double-click `FrameForge.vbs` on your Desktop to launch the ap
 
 ## Usage
 
-1. **Set your output folder** in the Output Settings panel (defaults to `~/Desktop/FrameForge_Output/`)
+1. **Set your output folder** in the Output Settings panel (defaults to `~/Desktop/FrameForge_Output/`, and remembered from then on)
 2. **Choose a format** — MP4 for standard use, WebM or ProRes 4444 for transparency
 3. **Add files** — drag `.html` files onto the drop zone, or click Browse. Hold `Ctrl`/`Shift` to select multiple files at once
 4. **Adjust settings** — duration, start delay, resolution, framerate, zoom, playback speed, background color
@@ -88,7 +88,7 @@ After installing, double-click `FrameForge.vbs` on your Desktop to launch the ap
 | **Resolution** | HD (1280×720) · FHD (1920×1080) · 2K (2560×1440) · 4K (3840×2160) |
 | **Frame rate** | 10 / 24 / 30 / 60 fps |
 | **Zoom** | Scales the HTML content inside the viewport (10 – 500%) |
-| **Playback speed** | 0.25× slow-mo up to 4× fast — applied at encode time, no re-capture needed |
+| **Playback speed** | Any value from 0.05× to 20×, typed in — applied at encode time, no re-capture needed |
 | **Background** | Black · White · Transparent (requires ProRes or WebM) |
 | **Deterministic JS timing** | On by default. Runs `requestAnimationFrame`, `setTimeout`, `setInterval`, `performance.now()` and `Date.now()` off the capture clock so canvas and JS-driven motion is frame-accurate. Turn off only if a page misbehaves under it |
 

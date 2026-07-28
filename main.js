@@ -1,5 +1,18 @@
 'use strict';
 
+// ─── VERSIONING ──────────────────────────────────────────────────────────────
+//
+// Bump the version in package.json on every edit to this project. Nothing else
+// stores a version number: the title bar reads it from package.json through the
+// 'get:appVersion' handler below, so package.json is the single source of truth.
+//
+//   patch (1.2.0 → 1.2.1)  bug fix, wording, styling, no behaviour change
+//   minor (1.2.0 → 1.3.0)  new setting, new UI, changed defaults
+//   major (1.2.0 → 2.0.0)  rewrite, or a change that breaks existing workflows
+//
+// Add a matching entry at the top of CHANGELOG.md in the same commit.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const os = require('os');
